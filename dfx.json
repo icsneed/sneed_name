@@ -1,0 +1,20 @@
+{
+  "canisters": {
+    "sneed_name": {
+      "main": "src/sneed_name/main.mo",
+      "type": "motoko"
+    },
+    "sneed_nickname": {
+      "main": "src/sneed_nickname/main.mo",
+      "type": "motoko"
+    }
+  },
+  "defaults": {
+    "build": {
+      "args": "",
+      "packtool": "mops sources"
+    }
+  },
+  "output_env_file": ".env",
+  "version": 1
+}
