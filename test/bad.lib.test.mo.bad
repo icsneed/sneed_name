@@ -1,0 +1,145 @@
+import Dedup "../src/lib";
+import Blob "mo:base/Blob";
+import Principal "mo:base/Principal";
+import Debug "mo:base/Debug";
+import Text "mo:base/Text";
+import Vector "mo:vector";
+import Map "mo:map/Map";
+import Permissions "../src/Permissions";
+import Result "mo:base/Result";
+import { test; suite } "mo:test/async";
+
+actor {
+    // Test principals
+    let admin1 = Principal.fromText("2vxsx-fae");
+    let admin2 = Principal.fromText("rrkah-fqaaa-aaaaa-aaaaq-cai");
+    let user1 = Principal.fromText("w3gef-eqaaa-aaaaa-aaaba-cai");
+    let user2 = Principal.fromText("un4fu-tqaaa-aaaaa-aaabq-cai");
+
+    // Test permission types
+    let TEST_PERMISSION = "test_permission";
+    let ASYNC_PERMISSION = "async_permission";
+
+    // Helper function for async permission check
+    func async_check(p : Principal) : async Bool {
+        Principal.equal(p, user2)
+    };
+
+    public shared func run_tests() : async () {
+        Debug.print("TADA!")
+/*        
+        await suite("Permissions Tests", func() : async () {
+            await suite("Admin Management", func() : async () {
+                let state = Permissions.empty();
+                let permissions = Permissions.PermissionsManager(state);
+
+                await test("should allow adding admin", func() : async () {
+                    let result = permissions.add_admin(admin1, admin2);
+                    assert(Result.isOk(result));
+                });
+
+                await test("should allow admin to add another admin", func() : async () {
+                    let result = permissions.add_admin(admin2, user1);
+                    assert(Result.isOk(result));
+                });
+
+                await test("should not allow non-admin to add admin", func() : async () {
+                    let result = permissions.add_admin(user2, user2);
+                    assert(Result.isErr(result));
+                });
+
+                await test("should allow removing admin", func() : async () {
+                    let result = permissions.remove_admin(admin1, user1);
+                    assert(Result.isOk(result));
+                });
+
+                await test("should not allow removed admin to add new admin", func() : async () {
+                    let result = permissions.add_admin(user1, user2);
+                    assert(Result.isErr(result));
+                });
+            });
+
+            await suite("Permission Type Management", func() : async () {
+                let state = Permissions.empty();
+                let permissions = Permissions.PermissionsManager(state);
+
+                // Add initial admin for these tests
+                ignore permissions.add_admin(admin1, admin1);
+
+                await test("should add simple permission type", func() : async () {
+                    let result = permissions.add_permission_type(
+                        TEST_PERMISSION,
+                        "Test permission",
+                        func (p : Principal) : Bool { Principal.equal(p, user1) },
+                        null
+                    );
+                    assert(Result.isOk(result));
+                });
+
+                await test("should add async permission type", func() : async () {
+                    let result = permissions.add_permission_type(
+                        ASYNC_PERMISSION,
+                        "Async test permission",
+                        func (p : Principal) : Bool { false },
+                        ?async_check
+                    );
+                    assert(Result.isOk(result));
+                });
+
+                await test("should allow removing permission type", func() : async () {
+                    let result = permissions.remove_permission_type(admin1, TEST_PERMISSION);
+                    assert(Result.isOk(result));
+                });
+            });
+
+            await suite("Permission Checking", func() : async () {
+                let state = Permissions.empty();
+                let permissions = Permissions.PermissionsManager(state);
+
+                // Setup for permission checks
+                ignore permissions.add_admin(admin1, admin1);
+                ignore permissions.add_permission_type(
+                    TEST_PERMISSION,
+                    "Test permission",
+                    func (p : Principal) : Bool { Principal.equal(p, user1) },
+                    null
+                );
+
+                await test("should allow authorized user", func() : async () {
+                    let result = await permissions.check_permission(user1, TEST_PERMISSION);
+                    assert(result == true);
+                });
+
+                await test("should deny unauthorized user", func() : async () {
+                    let result = await permissions.check_permission(user2, TEST_PERMISSION);
+                    assert(result == false);
+                });
+
+                await test("should allow admin all permissions", func() : async () {
+                    let result = await permissions.check_permission(admin1, TEST_PERMISSION);
+                    assert(result == true);
+                });
+
+                await test("should allow admin nonexistent permissions", func() : async () {
+                    let result = await permissions.check_permission(admin1, "nonexistent_permission");
+                    assert(result == true);
+                });
+
+                await test("should handle async permissions", func() : async () {
+                    ignore permissions.add_permission_type(
+                        ASYNC_PERMISSION,
+                        "Async test permission",
+                        func (p : Principal) : Bool { false },
+                        ?async_check
+                    );
+
+                    let allowed = await permissions.check_permission(user2, ASYNC_PERMISSION);
+                    assert(allowed == true);
+
+                    let denied = await permissions.check_permission(user1, ASYNC_PERMISSION);
+                    assert(denied == false);
+                });
+            });
+        });*/
+    };
+}

@@ -6,14 +6,15 @@ import Text "mo:base/Text";
 import Vector "mo:vector";
 import Map "mo:map/Map";
 import Permissions "../src/Permissions";
-import Result "mo:base/Result";
 
-actor {
+// Test static methods
+do {
+
     // Test principals
     let admin1 = Principal.fromText("2vxsx-fae");
     let admin2 = Principal.fromText("rrkah-fqaaa-aaaaa-aaaaq-cai");
-    let user1 = Principal.fromText("w3gef-eqaaa-aaaaa-aaaba-cai");
-    let user2 = Principal.fromText("un4fu-tqaaa-aaaaa-aaabq-cai");
+    let user1 = Principal.fromText("ryjl3-tyaaa-aaaaa-aaaba-cai");
+    let user2 = Principal.fromText("fp274-iaaaa-aaaaq-aacha-cai");
 
     // Test permission types
     let TEST_PERMISSION = "test_permission";
@@ -24,7 +25,9 @@ actor {
         Principal.equal(p, user2)
     };
 
-    public shared func run_tests() : async () {
+    Debug.print("Running tests...");
+    
+    shared func run_tests() : async () {
         await test_admin_management();
         await test_permission_types();
         await test_permission_checking();
@@ -32,7 +35,7 @@ actor {
     };
 
     // Test admin management functionality
-    private shared func test_admin_management() : async () {
+    shared func test_admin_management() : async () {
         let state = Permissions.empty();
         let permissions = Permissions.PermissionsManager(state);
 
@@ -69,8 +72,9 @@ actor {
         Debug.print("✓ Admin management tests passed");
     };
 
+
     // Test permission type management
-    private shared func test_permission_types() : async () {
+    shared func test_permission_types() : async () {
         let state = Permissions.empty();
         let permissions = Permissions.PermissionsManager(state);
 
@@ -120,7 +124,7 @@ actor {
     };
 
     // Test permission checking
-    private shared func test_permission_checking() : async () {
+    shared func test_permission_checking() : async () {
         let state = Permissions.empty();
         let permissions = Permissions.PermissionsManager(state);
 
@@ -162,4 +166,6 @@ actor {
 
         Debug.print("✓ Permission checking tests passed");
     };
-}
+
+    run_tests();
+};
