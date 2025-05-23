@@ -42,31 +42,31 @@ do {
         let permissions = Permissions.PermissionsManager(state);
 
         // Test adding admin
-        switch(permissions.add_admin(admin1, admin2)) {
+        switch(await permissions.add_admin(admin1, admin2)) {
             case (#err(e)) { Debug.trap("Failed to add admin2: " # e) };
             case (#ok()) {};
         };
 
         // Test that admin2 can now add another admin
-        switch(permissions.add_admin(admin2, user1)) {
+        switch(await permissions.add_admin(admin2, user1)) {
             case (#err(e)) { Debug.trap("Admin2 failed to add user1 as admin: " # e) };
             case (#ok()) {};
         };
 
         // Test that non-admin cannot add admin
-        switch(permissions.add_admin(user2, user2)) {
+        switch(await permissions.add_admin(user2, user2)) {
             case (#err(_)) {}; // Expected error
             case (#ok()) { Debug.trap("Non-admin was able to add admin") };
         };
 
         // Test removing admin
-        switch(permissions.remove_admin(admin1, user1)) {
+        switch(await permissions.remove_admin(admin1, user1)) {
             case (#err(e)) { Debug.trap("Failed to remove admin: " # e) };
             case (#ok()) {};
         };
 
         // Test that removed admin cannot add new admin
-        switch(permissions.add_admin(user1, user2)) {
+        switch(await permissions.add_admin(user1, user2)) {
             case (#err(_)) {}; // Expected error
             case (#ok()) { Debug.trap("Removed admin was able to add new admin") };
         };
