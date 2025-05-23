@@ -16,6 +16,8 @@ module {
     public let SET_SNS_NEURON_NAME_PERMISSION = "set_sns_neuron_name";
     public let REMOVE_SNS_NEURON_NAME_PERMISSION = "remove_sns_neuron_name";
 
+    public type NeuronId = { id : Blob };
+
     public type SnsPermissionSettings = {
         // Minimum voting power required for this permission
         min_voting_power : Nat64;
@@ -58,12 +60,46 @@ module {
         }
     };
 
-    // Interface for interacting with SNS governance canister
+    public type DissolveState = {
+        #DissolveDelaySeconds : Nat64;
+        #WhenDissolvedTimestampSeconds : Nat64;
+    };
+
+    public type NeuronPermission = {
+        principal : ?Principal;
+        permission_type : [Int32];
+    };
+
+    public type DisburseMaturityInProgress = {
+        timestamp_of_disbursement_seconds : Nat64;
+        amount_e8s : Nat64;
+        account_to_disburse_to : ?Account;
+        finalize_disbursement_timestamp_seconds : ?Nat64;
+    };
+
+    public type Account = {
+        owner : Principal;
+        subaccount : ?Blob;
+    };
+
+    public type Followees = { followees : [NeuronId] };
+
     public type Neuron = {
-        id : ?Nat64;
-        controller : ?Principal;
-        hot_keys : [Principal];
-        voting_power : Nat64;
+        id : ?NeuronId;
+        staked_maturity_e8s_equivalent : ?Nat64;
+        permissions : [NeuronPermission];
+        maturity_e8s_equivalent : Nat64;
+        cached_neuron_stake_e8s : Nat64;
+        created_timestamp_seconds : Nat64;
+        source_nns_neuron_id : ?Nat64;
+        auto_stake_maturity : ?Bool;
+        aging_since_timestamp_seconds : Nat64;
+        dissolve_state : ?DissolveState;
+        voting_power_percentage_multiplier : Nat64;
+        vesting_period_seconds : ?Nat64;
+        disburse_maturity_in_progress : [DisburseMaturityInProgress];
+        followees : [(Nat64, Followees)];
+        neuron_fees_e8s : Nat64;
     };
 
     public type SnsGovernanceCanister = actor {
@@ -86,10 +122,16 @@ module {
             let neurons = await sns_governance.list_neurons(principal);
             
             for (neuron in neurons.vals()) {
-                // Only include voting power if principal is a hotkey
-                for (hot_key in neuron.hot_keys.vals()) {
-                    if (Principal.equal(hot_key, principal)) {
-                        total_power += neuron.voting_power;
+                // Only include voting power if principal has permission
+                for (permission in neuron.permissions.vals()) {
+                    switch (permission.principal) {
+                        case (?p) {
+                            if (Principal.equal(p, principal)) {
+                                // Voting power is stake * multiplier
+                                total_power += neuron.cached_neuron_stake_e8s * neuron.voting_power_percentage_multiplier / 100;
+                            };
+                        };
+                        case null {};
                     };
                 };
             };
@@ -209,16 +251,25 @@ module {
         // Helper to check if caller has access to neuron
         private func has_neuron_access(
             caller : Principal,
-            neuron_id : Nat64,
+            neuron_id : NeuronId,
             sns_governance : SnsGovernanceCanister
         ) : async Bool {
             let neurons = await sns_governance.list_neurons(caller);
             for (neuron in neurons.vals()) {
                 switch (neuron.id) {
                     case (?id) {
-                        if (id == neuron_id) {
-                            // returned neurons are the ones caller has hotkey access to.
-                            return true;
+                        if (Blob.equal(id.id, neuron_id.id)) {
+                            // Check if caller has permission in this neuron
+                            for (permission in neuron.permissions.vals()) {
+                                switch (permission.principal) {
+                                    case (?p) {
+                                        if (Principal.equal(p, caller)) {
+                                            return true;
+                                        };
+                                    };
+                                    case null {};
+                                };
+                            };
                         };
                     };
                     case null {};
@@ -230,7 +281,7 @@ module {
         // Set name for a neuron
         public func set_sns_neuron_name(
             caller : Principal,
-            neuron_id : Nat64,
+            neuron_id : NeuronId,
             name : Text,
             sns_governance : SnsGovernanceCanister
         ) : async Result.Result<(), Text> {
@@ -243,7 +294,7 @@ module {
             };
 
             let now = Nat64.fromIntWrap(Time.now());
-            let neuron_index = state.dedup.getOrCreateIndex(Blob.fromArray(nat64ToBytes(neuron_id)));
+            let neuron_index = state.dedup.getOrCreateIndex(neuron_id.id);
             
             // Create or update name record
             let name_record = switch (Map.get(state.neuron_names, (func (n : Nat32) : Nat32 { n }, Nat32.equal), neuron_index)) {
@@ -274,15 +325,15 @@ module {
         };
 
         // Get name for a neuron
-        public func get_sns_neuron_name(neuron_id : Nat64) : ?T.Name {
-            let neuron_index = state.dedup.getOrCreateIndex(Blob.fromArray(nat64ToBytes(neuron_id)));
+        public func get_sns_neuron_name(neuron_id : NeuronId) : ?T.Name {
+            let neuron_index = state.dedup.getOrCreateIndex(neuron_id.id);
             Map.get(state.neuron_names, (func (n : Nat32) : Nat32 { n }, Nat32.equal), neuron_index);
         };
 
         // Remove name for a neuron
         public func remove_sns_neuron_name(
             caller : Principal,
-            neuron_id : Nat64,
+            neuron_id : NeuronId,
             sns_governance : SnsGovernanceCanister
         ) : async Result.Result<(), Text> {
             // First check if caller has general remove permission
@@ -293,23 +344,9 @@ module {
                 };
             };
 
-            let neuron_index = state.dedup.getOrCreateIndex(Blob.fromArray(nat64ToBytes(neuron_id)));
+            let neuron_index = state.dedup.getOrCreateIndex(neuron_id.id);
             Map.delete(state.neuron_names, (func (n : Nat32) : Nat32 { n }, Nat32.equal), neuron_index);
             #ok(());
-        };
-
-        // Helper function to convert Nat64 to [Nat8]
-        private func nat64ToBytes(n : Nat64) : [Nat8] {
-            [
-                Nat8.fromNat(Nat64.toNat((n >> 56) & 0xFF)),
-                Nat8.fromNat(Nat64.toNat((n >> 48) & 0xFF)),
-                Nat8.fromNat(Nat64.toNat((n >> 40) & 0xFF)),
-                Nat8.fromNat(Nat64.toNat((n >> 32) & 0xFF)),
-                Nat8.fromNat(Nat64.toNat((n >> 24) & 0xFF)),
-                Nat8.fromNat(Nat64.toNat((n >> 16) & 0xFF)),
-                Nat8.fromNat(Nat64.toNat((n >> 8) & 0xFF)),
-                Nat8.fromNat(Nat64.toNat(n & 0xFF))
-            ]
         };
     };
 }
