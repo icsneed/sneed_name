@@ -16,23 +16,45 @@ module Permissions {
         check_async : ?(Principal -> async Bool);
     };
 
-    public type PermissionState = {
+    // Stable state - only contains principals
+    public type StablePermissionState = {
         var admins : [Principal];
+    };
+
+    // Non-stable state - contains function pointers
+    public type PermissionState = {
+        stable_state : StablePermissionState;
         var permission_types : Map.Map<Text, PermissionType>;
     };
 
     public func empty() : PermissionState {
         {
-            var admins = [];
+            stable_state = {
+                var admins = [];
+            };
             var permission_types = Map.new<Text, PermissionType>();
         }
     };
 
-    public func check_admin(principal : Principal, state : PermissionState) : Bool {
+    public func empty_stable() : StablePermissionState {
+        {
+            var admins = [];
+        }
+    };
+
+    // Create a new PermissionState from stable state
+    public func from_stable(stable_state : StablePermissionState) : PermissionState {
+        {
+            stable_state = stable_state;
+            var permission_types = Map.new<Text, PermissionType>();
+        }
+    };
+
+    public func is_admin(principal : Principal, state : PermissionState) : Bool {
         if (Principal.isController(principal)) {
             return true;
         };
-        for (admin in state.admins.vals()) {
+        for (admin in state.stable_state.admins.vals()) {
             if (Principal.equal(admin, principal)) {
                 return true;
             };
@@ -42,7 +64,7 @@ module Permissions {
 
     public func check_permission(principal : Principal, permission : Text, state : PermissionState) : async Bool {
         // Admins have all permissions
-        if (check_admin(principal, state)) {
+        if (is_admin(principal, state)) {
             return true;
         };
 
@@ -73,7 +95,7 @@ module Permissions {
         check_async : ?(Principal -> async Bool),
         state : PermissionState
     ) : Result.Result<(), Text> {
-        if (not check_admin(caller, state)) {
+        if (not is_admin(caller, state)) {
             return #err("Not authorized");
         };
 
@@ -94,7 +116,7 @@ module Permissions {
         name : Text, 
         state : PermissionState
     ) : Result.Result<(), Text> {
-        if (not check_admin(caller, state)) {
+        if (not is_admin(caller, state)) {
             return #err("Not authorized");
         };
 
@@ -107,16 +129,16 @@ module Permissions {
         new_admin : Principal, 
         state : PermissionState
     ) : Result.Result<(), Text> {
-        if (not check_admin(caller, state)) {
+        if (not is_admin(caller, state)) {
             return #err("Not authorized");
         };
         
         // Check if already admin
-        if (check_admin(new_admin, state)) {
+        if (is_admin(new_admin, state)) {
             return #err("Already an admin");
         };
 
-        state.admins := Array.append(state.admins, [new_admin]);
+        state.stable_state.admins := Array.append(state.stable_state.admins, [new_admin]);
         #ok(());
     };
 
@@ -125,7 +147,7 @@ module Permissions {
         admin : Principal, 
         state : PermissionState
     ) : Result.Result<(), Text> {
-        if (not check_admin(caller, state)) {
+        if (not is_admin(caller, state)) {
             return #err("Not authorized");
         };
 
@@ -139,7 +161,7 @@ module Permissions {
             return #err("Cannot remove controller from admin");
         };
 
-        state.admins := Array.filter(state.admins, func(p : Principal) : Bool {
+        state.stable_state.admins := Array.filter(state.stable_state.admins, func(p : Principal) : Bool {
             not Principal.equal(p, admin)
         });
         #ok(());
@@ -148,6 +170,18 @@ module Permissions {
     public class PermissionsManager(state : PermissionState) {
         public func check_permission(principal : Principal, permission : Text) : async Bool {
             await Permissions.check_permission(principal, permission, state);
+        };
+
+        public func is_admin(principal : Principal) : Bool {
+            Permissions.is_admin(principal, state);
+        };
+
+        public func add_admin(caller : Principal, new_admin : Principal) : Result.Result<(), Text> {
+            Permissions.add_admin(caller, new_admin, state);
+        };
+
+        public func remove_admin(caller : Principal, admin : Principal) : Result.Result<(), Text> {
+            Permissions.remove_admin(caller, admin, state);
         };
 
         public func add_permission_type(
@@ -162,14 +196,6 @@ module Permissions {
 
         public func remove_permission_type(caller : Principal, name : Text) : Result.Result<(), Text> {
             Permissions.remove_permission_type(caller, name, state);
-        };
-
-        public func add_admin(caller : Principal, new_admin : Principal) : Result.Result<(), Text> {
-            Permissions.add_admin(caller, new_admin, state);
-        };
-
-        public func remove_admin(caller : Principal, admin : Principal) : Result.Result<(), Text> {
-            Permissions.remove_admin(caller, admin, state);
         };
     };
 }

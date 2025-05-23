@@ -5,16 +5,24 @@ import Text "mo:base/Text";
 import T "../Types";
 import NameIndex "../lib";
 import Permissions "../Permissions";
-actor {
+import NamePermissions "./NamePermissions";
 
-  stable var permission_state : Permissions.PermissionsState = Permissions.empty();
+actor {
+  // Only store admin list in stable memory
+  stable var stable_permission_state : Permissions.StablePermissionState = Permissions.empty_stable();
+  var permission_state : Permissions.PermissionState = Permissions.from_stable(stable_permission_state);
   let permissions = Permissions.PermissionsManager(permission_state);
 
   stable var name_index_state : T.NameIndexState = NameIndex.empty();
-  let name_index = NameIndex.NameIndex(name_index_state);
+  var name_index : NameIndex.NameIndex = NameIndex.NameIndex(name_index_state, permissions);
 
-  // admins
-  // word blacklist
+  // Initialize permission types - call this after deployment and upgrades
+  public shared ({ caller }) func init_permissions() : async Result.Result<(), Text> {
+    if (not permissions.is_admin(caller)) {
+      return #err("Only admins can initialize permissions");
+    };
+    await NamePermissions.add_name_permissions(permissions, caller);
+  };
 
   let nat32Utils = (func (n : Nat32) : Nat32 { n }, Nat32.equal);
   let textUtils = (Text.hash, Text.equal);
@@ -47,5 +55,10 @@ actor {
   // Helper function to get full name record by name
   public query func get_name_record(name : Text) : async ?T.Name {
     name_index.get_name_record(name);
+  };
+
+  // Recreate name_index after upgrade to ensure permissions are properly set
+  system func postupgrade() {
+    name_index := NameIndex.NameIndex(name_index_state, permissions);
   };
 };

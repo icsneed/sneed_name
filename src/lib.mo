@@ -18,7 +18,7 @@ module {
         };
     };
 
-    public class NameIndex(from: T.NameIndexState) {
+    public class NameIndex(from: T.NameIndexState, permissions: Permissions.PermissionsManager) {
         private let state = from;
         let dedup = Dedup.Dedup(state.dedup_state);
 
@@ -36,7 +36,7 @@ module {
             };
             
             // Allow if caller is setting their own name or if caller is an admin
-            if (not Principal.equal(caller, principal) and not Permissions.is_admin(caller, state)) {
+            if (not Principal.equal(caller, principal) and not permissions.is_admin(caller)) {
                 return #err("Not authorized: must be admin or setting own name");
             };
             
