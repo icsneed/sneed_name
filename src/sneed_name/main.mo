@@ -16,13 +16,7 @@ actor {
   stable var name_index_state : T.NameIndexState = NameIndex.empty();
   var name_index : NameIndex.NameIndex = NameIndex.NameIndex(name_index_state, permissions);
 
-  // Initialize permission types - call this after deployment and upgrades
-  public shared ({ caller }) func init_permissions() : async Result.Result<(), Text> {
-    if (not permissions.is_admin(caller)) {
-      return #err("Only admins can initialize permissions");
-    };
-    await NamePermissions.add_name_permissions(permissions, caller);
-  };
+  ignore NamePermissions.add_name_permissions(permissions);
 
   let nat32Utils = (func (n : Nat32) : Nat32 { n }, Nat32.equal);
   let textUtils = (Text.hash, Text.equal);
@@ -57,8 +51,4 @@ actor {
     name_index.get_name_record(name);
   };
 
-  // Recreate name_index after upgrade to ensure permissions are properly set
-  system func postupgrade() {
-    name_index := NameIndex.NameIndex(name_index_state, permissions);
-  };
 };

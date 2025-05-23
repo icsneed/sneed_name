@@ -10,8 +10,6 @@ import Array "mo:base/Array";
 module Permissions {
     public type PermissionType = {
         description : Text;
-        created : Nat64;
-        created_by : Principal;
         check : (Principal) -> Bool;
         check_async : ?(Principal -> async Bool);
     };
@@ -88,21 +86,14 @@ module Permissions {
     };
 
     public func add_permission_type(
-        caller : Principal,
         name : Text,
         description : Text,
         check : (Principal) -> Bool,
         check_async : ?(Principal -> async Bool),
         state : PermissionState
     ) : Result.Result<(), Text> {
-        if (not is_admin(caller, state)) {
-            return #err("Not authorized");
-        };
-
         let perm_type : PermissionType = {
             description = description;
-            created = Nat64.fromIntWrap(Time.now());
-            created_by = caller;
             check = check;
             check_async = check_async;
         };
@@ -185,13 +176,12 @@ module Permissions {
         };
 
         public func add_permission_type(
-            caller : Principal,
             name : Text,
             description : Text,
             check : (Principal) -> Bool,
             check_async : ?(Principal -> async Bool)
         ) : Result.Result<(), Text> {
-            Permissions.add_permission_type(caller, name, description, check, check_async, state);
+            Permissions.add_permission_type(name, description, check, check_async, state);
         };
 
         public func remove_permission_type(caller : Principal, name : Text) : Result.Result<(), Text> {
