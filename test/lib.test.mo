@@ -102,9 +102,15 @@ do {
             case (#ok()) { Debug.trap("Was able to add duplicate permission type") };
         };
 
+        // Convert permission type texts to indices
+        let add_admin_blob = Text.encodeUtf8(Permissions.ADD_ADMIN_PERMISSION);
+        let remove_admin_blob = Text.encodeUtf8(Permissions.REMOVE_ADMIN_PERMISSION);
+        let add_admin_index = state.dedup.getOrCreateIndex(add_admin_blob);
+        let remove_admin_index = state.dedup.getOrCreateIndex(remove_admin_blob);
+
         // Verify built-in permission types exist
-        assert(Map.get(state.permission_types, (Text.hash, Text.equal), Permissions.ADD_ADMIN_PERMISSION) != null);
-        assert(Map.get(state.permission_types, (Text.hash, Text.equal), Permissions.REMOVE_ADMIN_PERMISSION) != null);
+        assert(Map.get(state.permission_types, (func (n : Nat32) : Nat32 { n }, Nat32.equal), add_admin_index) != null);
+        assert(Map.get(state.permission_types, (func (n : Nat32) : Nat32 { n }, Nat32.equal), remove_admin_index) != null);
 
         Debug.print("✓ Permission type management tests passed");
     };
