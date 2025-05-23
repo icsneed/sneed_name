@@ -165,4 +165,26 @@ actor {
     name_index.get_name_record(name);
   };
 
+  // SNS Neuron Name Management
+  public shared ({ caller }) func set_sns_neuron_name(
+    neuron_id : Nat64,
+    name : Text,
+    sns_governance : Principal
+  ) : async Result.Result<(), Text> {
+    let governance_canister : SnsPermissions.SnsGovernanceCanister = actor(Principal.toText(sns_governance));
+    await sns_permissions.set_sns_neuron_name(caller, neuron_id, name, governance_canister);
+  };
+
+  public query func get_sns_neuron_name(neuron_id : Nat64) : async ?SnsPermissions.NeuronName {
+    sns_permissions.get_sns_neuron_name(neuron_id);
+  };
+
+  public shared ({ caller }) func remove_sns_neuron_name(
+    neuron_id : Nat64,
+    sns_governance : Principal
+  ) : async Result.Result<(), Text> {
+    let governance_canister : SnsPermissions.SnsGovernanceCanister = actor(Principal.toText(sns_governance));
+    await sns_permissions.remove_sns_neuron_name(caller, neuron_id, governance_canister);
+  };
+
 };

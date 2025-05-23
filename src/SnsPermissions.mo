@@ -4,9 +4,11 @@ import Map "mo:map/Map";
 import Text "mo:base/Text";
 import Nat64 "mo:base/Nat64";
 import Nat32 "mo:base/Nat32";
+import Nat8 "mo:base/Nat8";
 import Time "mo:base/Time";
 import Permissions "./Permissions";
 import Dedup "mo:dedup";
+import Blob "mo:base/Blob";
 
 module {
     public type SnsPermissionSettings = {
@@ -18,13 +20,24 @@ module {
         default_duration : ?Nat64;
     };
 
+    // Add neuron name record type
+    public type NeuronName = {
+        name : Text;
+        created_by : Principal;
+        created_at : Nat64;
+        updated_by : Principal;
+        updated_at : Nat64;
+    };
+
     // Stable state for SNS-specific settings
     public type StableSnsState = {
         var permission_settings : Map.Map<Nat32, SnsPermissionSettings>;  // Permission index -> Settings
+        var neuron_names : Map.Map<Nat32, NeuronName>;  // Neuron ID index -> Name
     };
 
     public type SnsState = {
         permission_settings : Map.Map<Nat32, SnsPermissionSettings>;
+        neuron_names : Map.Map<Nat32, NeuronName>;
         permissions : Permissions.PermissionsManager;
         dedup : Dedup.Dedup;
     };
@@ -32,6 +45,7 @@ module {
     public func empty_stable() : StableSnsState {
         {
             var permission_settings = Map.new<Nat32, SnsPermissionSettings>();
+            var neuron_names = Map.new<Nat32, NeuronName>();
         }
     };
 
@@ -42,6 +56,7 @@ module {
     ) : SnsState {
         {
             permission_settings = stable_state.permission_settings;
+            neuron_names = stable_state.neuron_names;
             permissions = permissions;
             dedup = dedup;
         }
@@ -157,6 +172,108 @@ module {
 
         public func cleanup_expired() {
             state.permissions.cleanup_expired();
+        };
+
+        // Helper to check if caller has access to neuron
+        private func has_neuron_access(
+            caller : Principal,
+            neuron_id : Nat64,
+            sns_governance : SnsGovernanceCanister
+        ) : async Bool {
+            let neurons = await sns_governance.list_neurons(caller);
+            for (neuron in neurons.vals()) {
+                switch (neuron.id) {
+                    case (?id) {
+                        if (id == neuron_id) {
+                            // Check if caller is a hotkey
+                            for (hot_key in neuron.hot_keys.vals()) {
+                                if (Principal.equal(hot_key, caller)) {
+                                    return true;
+                                };
+                            };
+                        };
+                    };
+                    case null {};
+                };
+            };
+            false
+        };
+
+        // Set name for a neuron
+        public func set_sns_neuron_name(
+            caller : Principal,
+            neuron_id : Nat64,
+            name : Text,
+            sns_governance : SnsGovernanceCanister
+        ) : async Result.Result<(), Text> {
+            // Check if caller has access to the neuron
+            if (not (await has_neuron_access(caller, neuron_id, sns_governance))) {
+                return #err("Not authorized: caller is not a hotkey for this neuron");
+            };
+
+            let now = Nat64.fromIntWrap(Time.now());
+            let neuron_index = state.dedup.getOrCreateIndex(Blob.fromArray(nat64ToBytes(neuron_id)));
+            
+            // Create or update name record
+            let name_record = switch (Map.get(state.neuron_names, (func (n : Nat32) : Nat32 { n }, Nat32.equal), neuron_index)) {
+                case (?existing) {
+                    {
+                        name = name;
+                        created_by = existing.created_by;
+                        created_at = existing.created_at;
+                        updated_by = caller;
+                        updated_at = now;
+                    }
+                };
+                case null {
+                    {
+                        name = name;
+                        created_by = caller;
+                        created_at = now;
+                        updated_by = caller;
+                        updated_at = now;
+                    }
+                };
+            };
+
+            Map.set(state.neuron_names, (func (n : Nat32) : Nat32 { n }, Nat32.equal), neuron_index, name_record);
+            #ok(());
+        };
+
+        // Get name for a neuron
+        public func get_sns_neuron_name(neuron_id : Nat64) : ?NeuronName {
+            let neuron_index = state.dedup.getOrCreateIndex(Blob.fromArray(nat64ToBytes(neuron_id)));
+            Map.get(state.neuron_names, (func (n : Nat32) : Nat32 { n }, Nat32.equal), neuron_index);
+        };
+
+        // Remove name for a neuron
+        public func remove_sns_neuron_name(
+            caller : Principal,
+            neuron_id : Nat64,
+            sns_governance : SnsGovernanceCanister
+        ) : async Result.Result<(), Text> {
+            // Check if caller has access to the neuron
+            if (not (await has_neuron_access(caller, neuron_id, sns_governance))) {
+                return #err("Not authorized: caller is not a hotkey for this neuron");
+            };
+
+            let neuron_index = state.dedup.getOrCreateIndex(Blob.fromArray(nat64ToBytes(neuron_id)));
+            Map.delete(state.neuron_names, (func (n : Nat32) : Nat32 { n }, Nat32.equal), neuron_index);
+            #ok(());
+        };
+
+        // Helper function to convert Nat64 to [Nat8]
+        private func nat64ToBytes(n : Nat64) : [Nat8] {
+            [
+                Nat8.fromNat(Nat64.toNat((n >> 56) & 0xFF)),
+                Nat8.fromNat(Nat64.toNat((n >> 48) & 0xFF)),
+                Nat8.fromNat(Nat64.toNat((n >> 40) & 0xFF)),
+                Nat8.fromNat(Nat64.toNat((n >> 32) & 0xFF)),
+                Nat8.fromNat(Nat64.toNat((n >> 24) & 0xFF)),
+                Nat8.fromNat(Nat64.toNat((n >> 16) & 0xFF)),
+                Nat8.fromNat(Nat64.toNat((n >> 8) & 0xFF)),
+                Nat8.fromNat(Nat64.toNat(n & 0xFF))
+            ]
         };
     };
 }
