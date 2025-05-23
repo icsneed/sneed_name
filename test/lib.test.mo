@@ -79,7 +79,6 @@ actor {
 
         // Test adding simple permission type
         switch(permissions.add_permission_type(
-            admin1,
             TEST_PERMISSION,
             "Test permission",
             func (p : Principal) : Bool { Principal.equal(p, user1) },
@@ -91,7 +90,6 @@ actor {
 
         // Test adding async permission type
         switch(permissions.add_permission_type(
-            admin1,
             ASYNC_PERMISSION,
             "Async test permission",
             func (p : Principal) : Bool { false },
@@ -103,7 +101,6 @@ actor {
 
         // Test that non-admin cannot add permission type
         switch(permissions.add_permission_type(
-            user2,
             "unauthorized_permission",
             "Should fail",
             func (p : Principal) : Bool { true },
@@ -132,7 +129,6 @@ actor {
 
         // Add test permission that only allows user1
         ignore permissions.add_permission_type(
-            admin1,
             TEST_PERMISSION,
             "Test permission",
             func (p : Principal) : Bool { Principal.equal(p, user1) },
@@ -140,24 +136,29 @@ actor {
         );
 
         // Test sync permission checks
-        assert(await permissions.check_permission(user1, TEST_PERMISSION) == true);
-        assert(await permissions.check_permission(user2, TEST_PERMISSION) == false);
+        let check1 = await permissions.check_permission(user1, TEST_PERMISSION);
+        assert(check1 == true);
+        let check2 = await permissions.check_permission(user2, TEST_PERMISSION);
+        assert(check2 == false);
         
         // Admin should have all permissions
-        assert(await permissions.check_permission(admin1, TEST_PERMISSION) == true);
-        assert(await permissions.check_permission(admin1, "nonexistent_permission") == true);
+        let check3 = await permissions.check_permission(admin1, TEST_PERMISSION);
+        assert(check3 == true);
+        let check4 = await permissions.check_permission(admin1, "nonexistent_permission");
+        assert(check4 == true);
 
         // Test async permission
         ignore permissions.add_permission_type(
-            admin1,
             ASYNC_PERMISSION,
             "Async test permission",
             func (p : Principal) : Bool { false },
             ?async_check
         );
 
-        assert(await permissions.check_permission(user2, ASYNC_PERMISSION) == true);
-        assert(await permissions.check_permission(user1, ASYNC_PERMISSION) == false);
+        let check5 = await permissions.check_permission(user2, ASYNC_PERMISSION);
+        assert(check5 == true);
+        let check6 = await permissions.check_permission(user1, ASYNC_PERMISSION);
+        assert(check6 == false);
 
         Debug.print("✓ Permission checking tests passed");
     };
