@@ -10,11 +10,17 @@ import NamePermissions "./NamePermissions";
 actor {
   // Only store admin list in stable memory
   stable var stable_permission_state : Permissions.StablePermissionState = Permissions.empty_stable();
-  var permission_state : Permissions.PermissionState = Permissions.from_stable(stable_permission_state);
+  stable var name_index_state : T.NameIndexState = NameIndex.empty();
+
+  // Create name index first since we need its dedup
+  var name_index : NameIndex.NameIndex = NameIndex.NameIndex(name_index_state, null);  // Pass null for permissions initially
+  
+  // Now create permissions using the same dedup instance
+  var permission_state : Permissions.PermissionState = Permissions.from_stable(stable_permission_state, name_index.get_dedup());
   let permissions = Permissions.PermissionsManager(permission_state);
 
-  stable var name_index_state : T.NameIndexState = NameIndex.empty();
-  var name_index : NameIndex.NameIndex = NameIndex.NameIndex(name_index_state, permissions);
+  // Now update name index with the permissions
+  name_index := NameIndex.NameIndex(name_index_state, ?permissions);
 
   ignore NamePermissions.add_name_permissions(permissions);
 

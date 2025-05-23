@@ -26,6 +26,10 @@ module {
         let nat32Utils = (func (n : Nat32) : Nat32 { n }, Nat32.equal);
         let textUtils = (Text.hash, Text.equal);
 
+        public func get_dedup() : Dedup.Dedup {
+            dedup
+        };
+
         public func get_principal_name(principal : Principal) : ?T.Name {
             let index = dedup.getOrCreateIndexForPrincipal(principal);
             Map.get(state.name_to_index, nat32Utils, index);

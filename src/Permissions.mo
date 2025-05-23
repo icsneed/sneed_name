@@ -4,7 +4,9 @@ import Result "mo:base/Result";
 import Text "mo:base/Text";
 import Time "mo:base/Time";
 import Nat64 "mo:base/Nat64";
+import Nat32 "mo:base/Nat32";
 import Array "mo:base/Array";
+import Dedup "mo:dedup";
 
 // We need module name "Permissions" to allow class methods to refer to them when they would otherwise have a name conflict.
 module Permissions {
@@ -16,15 +18,16 @@ module Permissions {
 
     // Stable state - contains only data that needs to persist
     public type StablePermissionState = {
-        var admins : Map.Map<Principal, PermissionMetadata>;  // Admin -> Metadata
-        var principal_permissions : Map.Map<Principal, Map.Map<Text, PermissionMetadata>>;  // Principal -> Permission -> Metadata
+        var admins : Map.Map<Nat32, PermissionMetadata>;  // Admin index -> Metadata
+        var principal_permissions : Map.Map<Nat32, Map.Map<Text, PermissionMetadata>>;  // Principal index -> Permission -> Metadata
     };
 
     // Non-stable state includes permission types that are registered on start
     public type PermissionState = {
-        admins : Map.Map<Principal, PermissionMetadata>;  // Admin -> Metadata
-        principal_permissions : Map.Map<Principal, Map.Map<Text, PermissionMetadata>>;  // Principal -> Permission -> Metadata
+        admins : Map.Map<Nat32, PermissionMetadata>;  // Admin index -> Metadata
+        principal_permissions : Map.Map<Nat32, Map.Map<Text, PermissionMetadata>>;  // Principal index -> Permission -> Metadata
         var permission_types : Map.Map<Text, Bool>;  // Set of valid permission types (non-stable)
+        dedup : Dedup.Dedup;  // For principal -> index conversion
     };
 
     // Built-in permission type keys
@@ -52,17 +55,34 @@ module Permissions {
 
     public func empty_stable() : StablePermissionState {
         {
-            var admins = Map.new<Principal, PermissionMetadata>();
-            var principal_permissions = Map.new<Principal, Map.Map<Text, PermissionMetadata>>();
+            var admins = Map.new<Nat32, PermissionMetadata>();
+            var principal_permissions = Map.new<Nat32, Map.Map<Text, PermissionMetadata>>();
         }
     };
 
-    // Create a new PermissionState from stable state
-    public func from_stable(stable_state : StablePermissionState) : PermissionState {
+    // Create new state with existing dedup instance
+    public func from_dedup(dedup : Dedup.Dedup) : PermissionState {
+        let state = {
+            admins = Map.new<Nat32, PermissionMetadata>();
+            principal_permissions = Map.new<Nat32, Map.Map<Text, PermissionMetadata>>();
+            var permission_types = Map.new<Text, Bool>();
+            dedup = dedup;
+        };
+
+        // Add built-in permission types
+        Map.set(state.permission_types, (Text.hash, Text.equal), ADD_ADMIN_PERMISSION, true);
+        Map.set(state.permission_types, (Text.hash, Text.equal), REMOVE_ADMIN_PERMISSION, true);
+
+        state
+    };
+
+    // Create a new PermissionState from stable state, using provided dedup
+    public func from_stable(stable_state : StablePermissionState, dedup : Dedup.Dedup) : PermissionState {
         let state = {
             admins = stable_state.admins;
             principal_permissions = stable_state.principal_permissions;
             var permission_types = Map.new<Text, Bool>();
+            dedup = dedup;
         };
 
         // Re-add built-in permission types
