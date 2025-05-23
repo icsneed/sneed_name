@@ -7,6 +7,7 @@ import Principal "mo:base/Principal";
 import Result "mo:base/Result";
 import Time "mo:base/Time";
 import Nat64 "mo:base/Nat64";
+import Permissions "./Permissions";
 
 module {
     public func empty() : T.NameIndexState {
@@ -30,9 +31,14 @@ module {
         };
 
         public func set_principal_name(caller : Principal, principal : Principal, name : Text) : async* Result.Result<(), Text> {
-            //if (Principal.isAnonymous(caller)) {
-            //    return #err("Anonymous caller");
-            //};
+            if (Principal.isAnonymous(caller)) {
+                return #err("Anonymous caller");
+            };
+            
+            // Allow if caller is setting their own name or if caller is an admin
+            if (not Principal.equal(caller, principal) and not Permissions.is_admin(caller, state)) {
+                return #err("Not authorized: must be admin or setting own name");
+            };
             
             let name_lower = Text.toLowercase(name);
             

@@ -1,16 +1,14 @@
-import Dedup "mo:dedup";
-import Map "mo:map/Map";
 import Result "mo:base/Result";
 import Nat32 "mo:base/Nat32";
-import Nat64 "mo:base/Nat64";
 import Principal "mo:base/Principal";
 import Text "mo:base/Text";
-import Time "mo:base/Time";
-import Hash "mo:base/Hash";
-import Blob "mo:base/Blob";
 import T "../Types";
 import NameIndex "../lib";
+import Permissions "../Permissions";
 actor {
+
+  stable var permission_state : Permissions.PermissionsState = Permissions.empty();
+  let permissions = Permissions.PermissionsManager(permission_state);
 
   stable var name_index_state : T.NameIndexState = NameIndex.empty();
   let name_index = NameIndex.NameIndex(name_index_state);
