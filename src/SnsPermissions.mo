@@ -27,12 +27,12 @@ module {
 
     // Stable state for SNS-specific settings
     public type StableSnsState = {
-        var permission_settings : Map.Map<Nat32, SnsPermissionSettings>;  // Permission index -> Settings
+        var permission_settings : Map.Map<Nat32, Map.Map<Nat32, SnsPermissionSettings>>;  // SNS governance index -> (Permission index -> Settings)
         var neuron_names : Map.Map<Nat32, T.Name>;  // Neuron ID index -> Name
     };
 
     public type SnsState = {
-        permission_settings : Map.Map<Nat32, SnsPermissionSettings>;
+        permission_settings : Map.Map<Nat32, Map.Map<Nat32, SnsPermissionSettings>>;
         neuron_names : Map.Map<Nat32, T.Name>;
         permissions : Permissions.PermissionsManager;
         dedup : Dedup.Dedup;
@@ -40,7 +40,7 @@ module {
 
     public func empty_stable() : StableSnsState {
         {
-            var permission_settings = Map.new<Nat32, SnsPermissionSettings>();
+            var permission_settings = Map.new<Nat32, Map.Map<Nat32, SnsPermissionSettings>>();
             var neuron_names = Map.new<Nat32, T.Name>();
         }
     };
@@ -108,11 +108,18 @@ module {
             };
 
             // Then check SNS voting power
+            let sns_index = state.dedup.getOrCreateIndexForPrincipal(Principal.fromActor(sns_governance));
             let permission_index = text_to_index(permission, state.dedup);
-            switch (Map.get(state.permission_settings, (func (n : Nat32) : Nat32 { n }, Nat32.equal), permission_index)) {
-                case (?settings) {
-                    let voting_power = await get_voting_power(principal, sns_governance);
-                    voting_power >= settings.min_voting_power
+
+            switch (Map.get(state.permission_settings, (func (n : Nat32) : Nat32 { n }, Nat32.equal), sns_index)) {
+                case (?sns_settings) {
+                    switch (Map.get(sns_settings, (func (n : Nat32) : Nat32 { n }, Nat32.equal), permission_index)) {
+                        case (?settings) {
+                            let voting_power = await get_voting_power(principal, sns_governance);
+                            voting_power >= settings.min_voting_power
+                        };
+                        case null { false };
+                    };
                 };
                 case null { false };
             };
@@ -121,6 +128,7 @@ module {
         // Set permission settings for SNS-based access
         public func set_permission_settings(
             caller : Principal,
+            sns_governance : Principal,
             permission : Text,
             settings : SnsPermissionSettings
         ) : Result.Result<(), Text> {
@@ -128,9 +136,27 @@ module {
                 return #err("Not authorized");
             };
 
+            let sns_index = state.dedup.getOrCreateIndexForPrincipal(sns_governance);
             let permission_index = text_to_index(permission, state.dedup);
+
+            // Get or create settings map for this SNS
+            let sns_settings = switch (Map.get(state.permission_settings, (func (n : Nat32) : Nat32 { n }, Nat32.equal), sns_index)) {
+                case (?existing) { existing };
+                case null {
+                    let new_map = Map.new<Nat32, SnsPermissionSettings>();
+                    Map.set(
+                        state.permission_settings,
+                        (func (n : Nat32) : Nat32 { n }, Nat32.equal),
+                        sns_index,
+                        new_map
+                    );
+                    new_map;
+                };
+            };
+
+            // Set settings for this permission type
             Map.set(
-                state.permission_settings,
+                sns_settings,
                 (func (n : Nat32) : Nat32 { n }, Nat32.equal),
                 permission_index,
                 settings
@@ -139,13 +165,23 @@ module {
         };
 
         // Get current settings for a permission
-        public func get_permission_settings(permission : Text) : ?SnsPermissionSettings {
+        public func get_permission_settings(
+            sns_governance : Principal,
+            permission : Text
+        ) : ?SnsPermissionSettings {
+            let sns_index = state.dedup.getOrCreateIndexForPrincipal(sns_governance);
             let permission_index = text_to_index(permission, state.dedup);
-            Map.get(
-                state.permission_settings,
-                (func (n : Nat32) : Nat32 { n }, Nat32.equal),
-                permission_index
-            );
+
+            switch (Map.get(state.permission_settings, (func (n : Nat32) : Nat32 { n }, Nat32.equal), sns_index)) {
+                case (?sns_settings) {
+                    Map.get(
+                        sns_settings,
+                        (func (n : Nat32) : Nat32 { n }, Nat32.equal),
+                        permission_index
+                    );
+                };
+                case null { null };
+            };
         };
 
         // Delegate other permission management to base class

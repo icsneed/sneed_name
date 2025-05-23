@@ -44,6 +44,7 @@ actor {
   // SNS Permission Management
   public shared ({ caller }) func set_sns_permission_settings(
     permission : Text,
+    sns_governance : Principal,
     min_voting_power : Nat64,
     max_duration : ?Nat64,
     default_duration : ?Nat64
@@ -53,14 +54,14 @@ actor {
       max_duration = max_duration;
       default_duration = default_duration;
     };
-    sns_permissions.set_permission_settings(caller, permission, settings);
+    sns_permissions.set_permission_settings(caller, sns_governance, permission, settings);
   };
 
-  public query func get_sns_permission_settings(permission : Text) : async ?SnsPermissions.SnsPermissionSettings {
-    sns_permissions.get_permission_settings(permission);
+  public query func get_sns_permission_settings(permission : Text, sns_governance : Principal) : async ?SnsPermissions.SnsPermissionSettings {
+    sns_permissions.get_permission_settings(sns_governance, permission);
   };
 
-  public shared ({ caller }) func check_sns_permission(
+  public shared func check_sns_permission(
     principal : Principal,
     permission : Text,
     sns_governance : Principal
@@ -175,7 +176,7 @@ actor {
     await sns_permissions.set_sns_neuron_name(caller, neuron_id, name, governance_canister);
   };
 
-  public query func get_sns_neuron_name(neuron_id : Nat64) : async ?SnsPermissions.NeuronName {
+  public query func get_sns_neuron_name(neuron_id : Nat64) : async ?T.Name {
     sns_permissions.get_sns_neuron_name(neuron_id);
   };
 
