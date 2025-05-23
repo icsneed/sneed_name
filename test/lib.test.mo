@@ -91,13 +91,23 @@ do {
         let permissions = Permissions.PermissionsManager(state);
 
         // Test adding simple permission type
-        switch(permissions.add_permission_type(TEST_PERMISSION)) {
+        switch(permissions.add_permission_type(
+            TEST_PERMISSION,
+            "Test permission for unit tests",
+            ?(24 * 60 * 60 * 1_000_000_000),  // 1 day max
+            ?(60 * 60 * 1_000_000_000)  // 1 hour default
+        )) {
             case (#err(e)) { Debug.trap("Failed to add permission type: " # e) };
             case (#ok()) {};
         };
 
         // Test adding duplicate permission type
-        switch(permissions.add_permission_type(TEST_PERMISSION)) {
+        switch(permissions.add_permission_type(
+            TEST_PERMISSION,
+            "Duplicate test permission",
+            null,
+            null
+        )) {
             case (#err(_)) {}; // Expected error
             case (#ok()) { Debug.trap("Was able to add duplicate permission type") };
         };
@@ -109,8 +119,22 @@ do {
         let remove_admin_index = state.dedup.getOrCreateIndex(remove_admin_blob);
 
         // Verify built-in permission types exist
-        assert(Map.get(state.permission_types, (func (n : Nat32) : Nat32 { n }, Nat32.equal), add_admin_index) != null);
-        assert(Map.get(state.permission_types, (func (n : Nat32) : Nat32 { n }, Nat32.equal), remove_admin_index) != null);
+        switch (Map.get(state.permission_types, (func (n : Nat32) : Nat32 { n }, Nat32.equal), add_admin_index)) {
+            case (?ptype) {
+                assert(ptype.description == "Can add new admins");
+                assert(ptype.max_duration != null);
+                assert(ptype.default_duration != null);
+            };
+            case null { Debug.trap("Add admin permission type not found") };
+        };
+        switch (Map.get(state.permission_types, (func (n : Nat32) : Nat32 { n }, Nat32.equal), remove_admin_index)) {
+            case (?ptype) {
+                assert(ptype.description == "Can remove admins");
+                assert(ptype.max_duration != null);
+                assert(ptype.default_duration != null);
+            };
+            case null { Debug.trap("Remove admin permission type not found") };
+        };
 
         Debug.print("✓ Permission type management tests passed");
     };

@@ -16,6 +16,12 @@ module Permissions {
         expires_at : ?Nat64;
     };
 
+    public type PermissionType = {
+        description : Text;
+        max_duration : ?Nat64;  // Maximum allowed expiration duration in nanoseconds
+        default_duration : ?Nat64;  // Default expiration duration in nanoseconds if none specified
+    };
+
     // Stable state - contains only data that needs to persist
     public type StablePermissionState = {
         var admins : Map.Map<Nat32, PermissionMetadata>;  // Admin index -> Metadata
@@ -26,7 +32,7 @@ module Permissions {
     public type PermissionState = {
         admins : Map.Map<Nat32, PermissionMetadata>;  // Admin index -> Metadata
         principal_permissions : Map.Map<Nat32, Map.Map<Nat32, PermissionMetadata>>;  // Principal index -> Permission index -> Metadata
-        var permission_types : Map.Map<Nat32, Bool>;  // Set of valid permission type indices
+        var permission_types : Map.Map<Nat32, PermissionType>;  // Permission index -> Type info
         dedup : Dedup.Dedup;  // For principal -> index and text -> index conversion
     };
 
@@ -45,15 +51,27 @@ module Permissions {
         let state = {
             admins = Map.new<Nat32, PermissionMetadata>();
             principal_permissions = Map.new<Nat32, Map.Map<Nat32, PermissionMetadata>>();
-            var permission_types = Map.new<Nat32, Bool>();
+            var permission_types = Map.new<Nat32, PermissionType>();
             dedup = dedup;
         };
 
         // Add built-in permission types
         let add_admin_index = text_to_index(ADD_ADMIN_PERMISSION, dedup);
         let remove_admin_index = text_to_index(REMOVE_ADMIN_PERMISSION, dedup);
-        Map.set(state.permission_types, (func (n : Nat32) : Nat32 { n }, Nat32.equal), add_admin_index, true);
-        Map.set(state.permission_types, (func (n : Nat32) : Nat32 { n }, Nat32.equal), remove_admin_index, true);
+        
+        let add_admin_type : PermissionType = {
+            description = "Can add new admins";
+            max_duration = ?(365 * 24 * 60 * 60 * 1_000_000_000);  // 1 year max
+            default_duration = ?(30 * 24 * 60 * 60 * 1_000_000_000);  // 30 days default
+        };
+        let remove_admin_type : PermissionType = {
+            description = "Can remove admins";
+            max_duration = ?(365 * 24 * 60 * 60 * 1_000_000_000);  // 1 year max
+            default_duration = ?(30 * 24 * 60 * 60 * 1_000_000_000);  // 30 days default
+        };
+
+        Map.set(state.permission_types, (func (n : Nat32) : Nat32 { n }, Nat32.equal), add_admin_index, add_admin_type);
+        Map.set(state.permission_types, (func (n : Nat32) : Nat32 { n }, Nat32.equal), remove_admin_index, remove_admin_type);
 
         state
     };
@@ -70,15 +88,27 @@ module Permissions {
         let state = {
             admins = Map.new<Nat32, PermissionMetadata>();
             principal_permissions = Map.new<Nat32, Map.Map<Nat32, PermissionMetadata>>();
-            var permission_types = Map.new<Nat32, Bool>();
+            var permission_types = Map.new<Nat32, PermissionType>();
             dedup = dedup;
         };
 
         // Add built-in permission types
         let add_admin_index = text_to_index(ADD_ADMIN_PERMISSION, dedup);
         let remove_admin_index = text_to_index(REMOVE_ADMIN_PERMISSION, dedup);
-        Map.set(state.permission_types, (func (n : Nat32) : Nat32 { n }, Nat32.equal), add_admin_index, true);
-        Map.set(state.permission_types, (func (n : Nat32) : Nat32 { n }, Nat32.equal), remove_admin_index, true);
+        
+        let add_admin_type : PermissionType = {
+            description = "Can add new admins";
+            max_duration = ?(365 * 24 * 60 * 60 * 1_000_000_000);  // 1 year max
+            default_duration = ?(30 * 24 * 60 * 60 * 1_000_000_000);  // 30 days default
+        };
+        let remove_admin_type : PermissionType = {
+            description = "Can remove admins";
+            max_duration = ?(365 * 24 * 60 * 60 * 1_000_000_000);  // 1 year max
+            default_duration = ?(30 * 24 * 60 * 60 * 1_000_000_000);  // 30 days default
+        };
+
+        Map.set(state.permission_types, (func (n : Nat32) : Nat32 { n }, Nat32.equal), add_admin_index, add_admin_type);
+        Map.set(state.permission_types, (func (n : Nat32) : Nat32 { n }, Nat32.equal), remove_admin_index, remove_admin_type);
 
         state
     };
@@ -88,15 +118,27 @@ module Permissions {
         let state = {
             admins = stable_state.admins;
             principal_permissions = stable_state.principal_permissions;
-            var permission_types = Map.new<Nat32, Bool>();
+            var permission_types = Map.new<Nat32, PermissionType>();
             dedup = dedup;
         };
 
         // Re-add built-in permission types
         let add_admin_index = text_to_index(ADD_ADMIN_PERMISSION, dedup);
         let remove_admin_index = text_to_index(REMOVE_ADMIN_PERMISSION, dedup);
-        Map.set(state.permission_types, (func (n : Nat32) : Nat32 { n }, Nat32.equal), add_admin_index, true);
-        Map.set(state.permission_types, (func (n : Nat32) : Nat32 { n }, Nat32.equal), remove_admin_index, true);
+        
+        let add_admin_type : PermissionType = {
+            description = "Can add new admins";
+            max_duration = ?(365 * 24 * 60 * 60 * 1_000_000_000);  // 1 year max
+            default_duration = ?(30 * 24 * 60 * 60 * 1_000_000_000);  // 30 days default
+        };
+        let remove_admin_type : PermissionType = {
+            description = "Can remove admins";
+            max_duration = ?(365 * 24 * 60 * 60 * 1_000_000_000);  // 1 year max
+            default_duration = ?(30 * 24 * 60 * 60 * 1_000_000_000);  // 30 days default
+        };
+
+        Map.set(state.permission_types, (func (n : Nat32) : Nat32 { n }, Nat32.equal), add_admin_index, add_admin_type);
+        Map.set(state.permission_types, (func (n : Nat32) : Nat32 { n }, Nat32.equal), remove_admin_index, remove_admin_type);
 
         state
     };
@@ -159,6 +201,7 @@ module Permissions {
 
     public func add_permission_type(
         name : Text,
+        permission_type : PermissionType,
         state : PermissionState
     ) : Result.Result<(), Text> {
         let name_index = text_to_index(name, state.dedup);
@@ -166,7 +209,7 @@ module Permissions {
         switch (Map.get(state.permission_types, (func (n : Nat32) : Nat32 { n }, Nat32.equal), name_index)) {
             case (?_) { #err("Permission type already exists") };
             case null {
-                Map.set(state.permission_types, (func (n : Nat32) : Nat32 { n }, Nat32.equal), name_index, true);
+                Map.set(state.permission_types, (func (n : Nat32) : Nat32 { n }, Nat32.equal), name_index, permission_type);
                 #ok(());
             };
         };
@@ -185,33 +228,56 @@ module Permissions {
         };
 
         let permission_index = text_to_index(permission, state.dedup);
-        // Check if permission type exists
+        // Check if permission type exists and validate expiration
         switch (Map.get(state.permission_types, (func (n : Nat32) : Nat32 { n }, Nat32.equal), permission_index)) {
             case null { return #err("Invalid permission type") };
-            case (?_) {};
-        };
+            case (?ptype) {
+                let now = Nat64.fromIntWrap(Time.now());
+                let effective_expiry = switch(expires_at) {
+                    case (?exp) {
+                        // Check if expiry exceeds max duration
+                        switch(ptype.max_duration) {
+                            case (?max) {
+                                if (exp > now + max) {
+                                    return #err("Expiration exceeds maximum allowed duration");
+                                };
+                            };
+                            case null {};
+                        };
+                        ?exp
+                    };
+                    case null {
+                        // Use default duration if specified
+                        switch(ptype.default_duration) {
+                            case (?default) { ?(now + default) };
+                            case null { null };
+                        };
+                    };
+                };
 
-        let target_index = state.dedup.getOrCreateIndexForPrincipal(target);
-        // Get or create permission map for principal
-        let perm_map = switch (Map.get(state.principal_permissions, (func (n : Nat32) : Nat32 { n }, Nat32.equal), target_index)) {
-            case (?existing) { existing };
-            case null {
-                let new_map = Map.new<Nat32, PermissionMetadata>();
-                Map.set(state.principal_permissions, (func (n : Nat32) : Nat32 { n }, Nat32.equal), target_index, new_map);
-                new_map;
+                let target_index = state.dedup.getOrCreateIndexForPrincipal(target);
+                // Get or create permission map for principal
+                let perm_map = switch (Map.get(state.principal_permissions, (func (n : Nat32) : Nat32 { n }, Nat32.equal), target_index)) {
+                    case (?existing) { existing };
+                    case null {
+                        let new_map = Map.new<Nat32, PermissionMetadata>();
+                        Map.set(state.principal_permissions, (func (n : Nat32) : Nat32 { n }, Nat32.equal), target_index, new_map);
+                        new_map;
+                    };
+                };
+
+                // Create permission metadata
+                let metadata : PermissionMetadata = {
+                    created_by = caller;
+                    created_at = now;
+                    expires_at = effective_expiry;
+                };
+
+                // Grant permission
+                Map.set(perm_map, (func (n : Nat32) : Nat32 { n }, Nat32.equal), permission_index, metadata);
+                #ok(());
             };
         };
-
-        // Create permission metadata
-        let metadata : PermissionMetadata = {
-            created_by = caller;
-            created_at = Nat64.fromIntWrap(Time.now());
-            expires_at = expires_at;
-        };
-
-        // Grant permission
-        Map.set(perm_map, (func (n : Nat32) : Nat32 { n }, Nat32.equal), permission_index, metadata);
-        #ok(());
     };
 
     public func revoke_permission(
@@ -287,8 +353,18 @@ module Permissions {
             #ok(());
         };
 
-        public func add_permission_type(name : Text) : Result.Result<(), Text> {
-            Permissions.add_permission_type(name, state);
+        public func add_permission_type(
+            name : Text,
+            description : Text,
+            max_duration : ?Nat64,
+            default_duration : ?Nat64
+        ) : Result.Result<(), Text> {
+            let permission_type : PermissionType = {
+                description = description;
+                max_duration = max_duration;
+                default_duration = default_duration;
+            };
+            Permissions.add_permission_type(name, permission_type, state);
         };
 
         public func grant_permission(
