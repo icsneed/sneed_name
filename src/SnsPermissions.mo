@@ -12,6 +12,10 @@ import Blob "mo:base/Blob";
 import T "Types";
 
 module {
+    // Permission type constants
+    public let SET_SNS_NEURON_NAME_PERMISSION = "set_sns_neuron_name";
+    public let REMOVE_SNS_NEURON_NAME_PERMISSION = "remove_sns_neuron_name";
+
     public type SnsPermissionSettings = {
         // Minimum voting power required for this permission
         min_voting_power : Nat64;
@@ -177,12 +181,8 @@ module {
                 switch (neuron.id) {
                     case (?id) {
                         if (id == neuron_id) {
-                            // Check if caller is a hotkey
-                            for (hot_key in neuron.hot_keys.vals()) {
-                                if (Principal.equal(hot_key, caller)) {
-                                    return true;
-                                };
-                            };
+                            // returned neurons are the ones caller has hotkey access to.
+                            return true;
                         };
                     };
                     case null {};
@@ -198,9 +198,12 @@ module {
             name : Text,
             sns_governance : SnsGovernanceCanister
         ) : async Result.Result<(), Text> {
-            // Check if caller has access to the neuron
-            if (not (await has_neuron_access(caller, neuron_id, sns_governance))) {
-                return #err("Not authorized: caller is not a hotkey for this neuron");
+            // First check if caller has general set permission
+            if (not state.permissions.check_permission(caller, SET_SNS_NEURON_NAME_PERMISSION)) {
+                // Fall back to checking specific neuron access
+                if (not (await has_neuron_access(caller, neuron_id, sns_governance))) {
+                    return #err("Not authorized: caller must have set_sns_neuron_name permission or be a hotkey for this neuron");
+                };
             };
 
             let now = Nat64.fromIntWrap(Time.now());
@@ -246,9 +249,12 @@ module {
             neuron_id : Nat64,
             sns_governance : SnsGovernanceCanister
         ) : async Result.Result<(), Text> {
-            // Check if caller has access to the neuron
-            if (not (await has_neuron_access(caller, neuron_id, sns_governance))) {
-                return #err("Not authorized: caller is not a hotkey for this neuron");
+            // First check if caller has general remove permission
+            if (not state.permissions.check_permission(caller, REMOVE_SNS_NEURON_NAME_PERMISSION)) {
+                // Fall back to checking specific neuron access
+                if (not (await has_neuron_access(caller, neuron_id, sns_governance))) {
+                    return #err("Not authorized: caller must have remove_sns_neuron_name permission or be a hotkey for this neuron");
+                };
             };
 
             let neuron_index = state.dedup.getOrCreateIndex(Blob.fromArray(nat64ToBytes(neuron_id)));
