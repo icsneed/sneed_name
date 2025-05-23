@@ -17,12 +17,33 @@ actor {
   
   // Now create permissions using the same dedup instance
   var permission_state : Permissions.PermissionState = Permissions.from_stable(stable_permission_state, name_index.get_dedup());
-  let permissions = Permissions.PermissionsManager(permission_state);
+  var permissions : Permissions.PermissionsManager = Permissions.PermissionsManager(permission_state);
 
   // Now update name index with the permissions
   name_index := NameIndex.NameIndex(name_index_state, ?permissions);
 
+  // Add name-specific permission types
   ignore NamePermissions.add_name_permissions(permissions);
+
+  system func preupgrade() {
+    // Save stable state
+    stable_permission_state := {
+      var admins = permission_state.admins;
+      var principal_permissions = permission_state.principal_permissions;
+    };
+    // No need to update dedup_state as it's already in name_index_state
+  };
+
+  system func postupgrade() {
+    // Re-initialize in the correct order
+    name_index := NameIndex.NameIndex(name_index_state, null);
+    permission_state := Permissions.from_stable(stable_permission_state, name_index.get_dedup());
+    permissions := Permissions.PermissionsManager(permission_state);
+    name_index := NameIndex.NameIndex(name_index_state, ?permissions);
+    
+    // Re-add permission types after upgrade
+    ignore NamePermissions.add_name_permissions(permissions);
+  };
 
   let nat32Utils = (func (n : Nat32) : Nat32 { n }, Nat32.equal);
   let textUtils = (Text.hash, Text.equal);

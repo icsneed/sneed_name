@@ -35,15 +35,12 @@ module Permissions {
     public let REMOVE_ADMIN_PERMISSION = "remove_admin";
 
     public func empty() : PermissionState {
-        let stable_state = {
-            var admins = Map.new<Principal, PermissionMetadata>();
-            var principal_permissions = Map.new<Principal, Map.Map<Text, PermissionMetadata>>();
-        };
-
+        let dedup = Dedup.Dedup(?Dedup.empty());
         let state = {
-            admins = stable_state.admins;
-            principal_permissions = stable_state.principal_permissions;
+            admins = Map.new<Nat32, PermissionMetadata>();
+            principal_permissions = Map.new<Nat32, Map.Map<Text, PermissionMetadata>>();
             var permission_types = Map.new<Text, Bool>();
+            dedup = dedup;
         };
 
         // Add built-in permission types
@@ -97,7 +94,8 @@ module Permissions {
             return true;
         };
 
-        switch (Map.get(state.admins, (Principal.hash, Principal.equal), principal)) {
+        let index = state.dedup.getOrCreateIndexForPrincipal(principal);
+        switch (Map.get(state.admins, (func (n : Nat32) : Nat32 { n }, Nat32.equal), index)) {
             case (?metadata) {
                 // Check if admin permission has expired
                 switch (metadata.expires_at) {
@@ -124,8 +122,9 @@ module Permissions {
             case (?_) {};
         };
 
+        let index = state.dedup.getOrCreateIndexForPrincipal(principal);
         // Check if principal has the permission and it hasn't expired
-        switch (Map.get(state.principal_permissions, (Principal.hash, Principal.equal), principal)) {
+        switch (Map.get(state.principal_permissions, (func (n : Nat32) : Nat32 { n }, Nat32.equal), index)) {
             case (?perm_map) {
                 switch (Map.get(perm_map, (Text.hash, Text.equal), permission)) {
                     case (?metadata) {
@@ -133,7 +132,7 @@ module Permissions {
                         switch (metadata.expires_at) {
                             case (?expiry) {
                                 let now = Nat64.fromIntWrap(Time.now());
-                                now < expiry  // Permission is valid if current time is strictly less than expiry
+                                now < expiry
                             };
                             case null { true };
                         };
@@ -177,12 +176,13 @@ module Permissions {
             case (?_) {};
         };
 
+        let target_index = state.dedup.getOrCreateIndexForPrincipal(target);
         // Get or create permission map for principal
-        let perm_map = switch (Map.get(state.principal_permissions, (Principal.hash, Principal.equal), target)) {
+        let perm_map = switch (Map.get(state.principal_permissions, (func (n : Nat32) : Nat32 { n }, Nat32.equal), target_index)) {
             case (?existing) { existing };
             case null {
                 let new_map = Map.new<Text, PermissionMetadata>();
-                Map.set(state.principal_permissions, (Principal.hash, Principal.equal), target, new_map);
+                Map.set(state.principal_permissions, (func (n : Nat32) : Nat32 { n }, Nat32.equal), target_index, new_map);
                 new_map;
             };
         };
@@ -210,7 +210,8 @@ module Permissions {
             return #err("Not authorized");
         };
 
-        switch (Map.get(state.principal_permissions, (Principal.hash, Principal.equal), target)) {
+        let target_index = state.dedup.getOrCreateIndexForPrincipal(target);
+        switch (Map.get(state.principal_permissions, (func (n : Nat32) : Nat32 { n }, Nat32.equal), target_index)) {
             case (?perm_map) {
                 Map.delete(perm_map, (Text.hash, Text.equal), permission);
                 #ok(());
@@ -247,7 +248,8 @@ module Permissions {
                 expires_at = expires_at;
             };
 
-            Map.set(state.admins, (Principal.hash, Principal.equal), new_admin, metadata);
+            let new_admin_index = state.dedup.getOrCreateIndexForPrincipal(new_admin);
+            Map.set(state.admins, (func (n : Nat32) : Nat32 { n }, Nat32.equal), new_admin_index, metadata);
             #ok(());
         };
 
@@ -264,7 +266,8 @@ module Permissions {
                 return #err("Cannot remove controller from admin");
             };
 
-            Map.delete(state.admins, (Principal.hash, Principal.equal), admin);
+            let admin_index = state.dedup.getOrCreateIndexForPrincipal(admin);
+            Map.delete(state.admins, (func (n : Nat32) : Nat32 { n }, Nat32.equal), admin_index);
             #ok(());
         };
 

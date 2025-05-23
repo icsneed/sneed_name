@@ -8,6 +8,7 @@ import Map "mo:map/Map";
 import Permissions "../src/Permissions";
 import Time "mo:base/Time";
 import Nat64 "mo:base/Nat64";
+import Nat32 "mo:base/Nat32";
 
 // Test static methods
 do {
@@ -39,7 +40,8 @@ do {
             created_at = Nat64.fromIntWrap(Time.now());
             expires_at = null;
         };
-        Map.set(state.admins, (Principal.hash, Principal.equal), admin1, admin_metadata);
+        let admin1_index = state.dedup.getOrCreateIndexForPrincipal(admin1);
+        Map.set(state.admins, (func (n : Nat32) : Nat32 { n }, Nat32.equal), admin1_index, admin_metadata);
         let permissions = Permissions.PermissionsManager(state);
 
         // Test adding admin
@@ -84,7 +86,8 @@ do {
             created_at = Nat64.fromIntWrap(Time.now());
             expires_at = null;
         };
-        Map.set(state.admins, (Principal.hash, Principal.equal), admin1, admin_metadata);
+        let admin1_index = state.dedup.getOrCreateIndexForPrincipal(admin1);
+        Map.set(state.admins, (func (n : Nat32) : Nat32 { n }, Nat32.equal), admin1_index, admin_metadata);
         let permissions = Permissions.PermissionsManager(state);
 
         // Test adding simple permission type
@@ -115,7 +118,8 @@ do {
             created_at = Nat64.fromIntWrap(Time.now());
             expires_at = null;
         };
-        Map.set(state.admins, (Principal.hash, Principal.equal), admin1, admin_metadata);
+        let admin1_index = state.dedup.getOrCreateIndexForPrincipal(admin1);
+        Map.set(state.admins, (func (n : Nat32) : Nat32 { n }, Nat32.equal), admin1_index, admin_metadata);
         let permissions = Permissions.PermissionsManager(state);
 
         // Add test permission
@@ -181,7 +185,8 @@ do {
             created_at = Nat64.fromIntWrap(Time.now());
             expires_at = null;
         };
-        Map.set(state.admins, (Principal.hash, Principal.equal), admin1, admin_metadata);
+        let admin1_index = state.dedup.getOrCreateIndexForPrincipal(admin1);
+        Map.set(state.admins, (func (n : Nat32) : Nat32 { n }, Nat32.equal), admin1_index, admin_metadata);
         let permissions = Permissions.PermissionsManager(state);
 
         // Grant add_admin permission to user1

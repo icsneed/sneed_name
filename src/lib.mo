@@ -19,7 +19,7 @@ module {
         };
     };
 
-    public class NameIndex(from: T.NameIndexState, permissions: Permissions.PermissionsManager) {
+    public class NameIndex(from: T.NameIndexState, permissions: ?Permissions.PermissionsManager) {
         private let state = from;
         let dedup = Dedup.Dedup(state.dedup_state);
 
@@ -41,9 +41,18 @@ module {
             };
             
             // Allow if caller is setting their own name or if caller has edit permission
-            if (not Principal.equal(caller, principal) and 
-                not permissions.is_admin(caller) and 
-                not permissions.check_permission(caller, NamePermissions.EDIT_ANY_NAME)) {
+            let has_permission = switch (permissions) {
+                case (?p) {
+                    Principal.equal(caller, principal) or 
+                    p.is_admin(caller) or 
+                    p.check_permission(caller, NamePermissions.EDIT_ANY_NAME)
+                };
+                case null {
+                    Principal.equal(caller, principal)  // Without permissions, only allow self-editing
+                };
+            };
+
+            if (not has_permission) {
                 return #err("Not authorized: must be admin or setting own name");
             };
             
