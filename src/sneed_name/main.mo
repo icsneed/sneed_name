@@ -6,6 +6,7 @@ import T "../Types";
 import NameIndex "../lib";
 import Permissions "../Permissions";
 import NamePermissions "./NamePermissions";
+import Timer "mo:base/Timer";
 
 actor {
   // Only store admin list in stable memory
@@ -24,6 +25,14 @@ actor {
 
   // Add name-specific permission types
   ignore NamePermissions.add_name_permissions(permissions);
+
+  // Timer for cleaning up expired permissions (runs every hour)
+  let cleanup_timer = Timer.recurringTimer<system>(
+    #seconds(3600),  // 1 hour
+    func() : async () {
+      permissions.cleanup_expired();
+    }
+  );
 
   // Admin management
   public shared ({ caller }) func add_admin(admin : Principal, expires_at : ?Nat64) : async Result.Result<(), Text> {
@@ -86,6 +95,7 @@ actor {
       var principal_permissions = permission_state.principal_permissions;
     };
     // No need to update dedup_state as it's already in name_index_state
+    Timer.cancelTimer(cleanup_timer);  // Cancel timer before upgrade
   };
 
   system func postupgrade() {

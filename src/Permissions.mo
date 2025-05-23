@@ -302,6 +302,43 @@ module Permissions {
         };
     };
 
+    public func cleanup_expired_permissions(state : PermissionState) : () {
+        let now = Nat64.fromIntWrap(Time.now());
+        
+        // Cleanup expired admins
+        let admin_entries = Map.entries(state.admins);
+        for ((index, metadata) in admin_entries) {
+            switch (metadata.expires_at) {
+                case (?expiry) {
+                    if (now >= expiry) {
+                        Map.delete(state.admins, (func (n : Nat32) : Nat32 { n }, Nat32.equal), index);
+                    };
+                };
+                case null {};
+            };
+        };
+
+        // Cleanup expired permissions for each principal
+        let principal_entries = Map.entries(state.principal_permissions);
+        for ((principal_index, perm_map) in principal_entries) {
+            let perm_entries = Map.entries(perm_map);
+            for ((perm_index, metadata) in perm_entries) {
+                switch (metadata.expires_at) {
+                    case (?expiry) {
+                        if (now >= expiry) {
+                            Map.delete(perm_map, (func (n : Nat32) : Nat32 { n }, Nat32.equal), perm_index);
+                        };
+                    };
+                    case null {};
+                };
+            };
+            // Remove principal's map if empty
+            if (Map.size(perm_map) == 0) {
+                Map.delete(state.principal_permissions, (func (n : Nat32) : Nat32 { n }, Nat32.equal), principal_index);
+            };
+        };
+    };
+
     public class PermissionsManager(state : PermissionState) {
         public func check_permission(principal : Principal, permission : Text) : Bool {
             Permissions.check_permission(principal, permission, state);
@@ -378,6 +415,10 @@ module Permissions {
 
         public func revoke_permission(caller : Principal, target : Principal, permission : Text) : Result.Result<(), Text> {
             Permissions.revoke_permission(caller, target, permission, state);
+        };
+
+        public func cleanup_expired() {
+            cleanup_expired_permissions(state);
         };
     };
 }
