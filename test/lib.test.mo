@@ -145,13 +145,28 @@ do {
 
         // Test permission expiration
         let now = Nat64.fromIntWrap(Time.now());
-        let expired_time : Nat64 = 1_000_000; // Set expiration to a past timestamp
+        let expired_time = now + 20;  // Set expiration to future time
         
+        Debug.print("Current time: " # debug_show(now));
+        Debug.print("Expiration time: " # debug_show(expired_time));
+        
+        // First grant permission with future expiry - should be valid
         switch(permissions.grant_permission(admin1, user2, TEST_PERMISSION, ?expired_time)) {
+            case (#err(e)) { Debug.trap("Failed to grant future permission: " # e) };
+            case (#ok()) {};
+        };
+
+        // Permission should be valid since expiry is in future
+        assert(permissions.check_permission(user2, TEST_PERMISSION) == true);
+
+        // Now grant with past expiry - should be invalid
+        let past_time = now - 20;  // Set expiration to past time
+        switch(permissions.grant_permission(admin1, user2, TEST_PERMISSION, ?past_time)) {
             case (#err(e)) { Debug.trap("Failed to grant expired permission: " # e) };
             case (#ok()) {};
         };
-        
+
+        // Permission should be invalid since expiry is in past
         assert(permissions.check_permission(user2, TEST_PERMISSION) == false);
 
         Debug.print("✓ Permission checking tests passed");

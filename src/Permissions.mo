@@ -98,6 +98,12 @@ module Permissions {
             return true;
         };
 
+        // First check if permission type exists
+        switch (Map.get(state.permission_types, (Text.hash, Text.equal), permission)) {
+            case null { return false };
+            case (?_) {};
+        };
+
         // Check if principal has the permission and it hasn't expired
         switch (Map.get(state.principal_permissions, (Principal.hash, Principal.equal), principal)) {
             case (?perm_map) {
@@ -107,7 +113,7 @@ module Permissions {
                         switch (metadata.expires_at) {
                             case (?expiry) {
                                 let now = Nat64.fromIntWrap(Time.now());
-                                now <= expiry  // Permission is valid if current time is less than or equal to expiry
+                                now < expiry  // Permission is valid if current time is strictly less than expiry
                             };
                             case null { true };
                         };
