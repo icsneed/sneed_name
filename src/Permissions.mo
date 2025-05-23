@@ -19,33 +19,41 @@ module Permissions {
     // Stable state - contains only data that needs to persist
     public type StablePermissionState = {
         var admins : Map.Map<Nat32, PermissionMetadata>;  // Admin index -> Metadata
-        var principal_permissions : Map.Map<Nat32, Map.Map<Text, PermissionMetadata>>;  // Principal index -> Permission -> Metadata
+        var principal_permissions : Map.Map<Nat32, Map.Map<Nat32, PermissionMetadata>>;  // Principal index -> Permission index -> Metadata
     };
 
     // Non-stable state includes permission types that are registered on start
     public type PermissionState = {
         admins : Map.Map<Nat32, PermissionMetadata>;  // Admin index -> Metadata
-        principal_permissions : Map.Map<Nat32, Map.Map<Text, PermissionMetadata>>;  // Principal index -> Permission -> Metadata
-        var permission_types : Map.Map<Text, Bool>;  // Set of valid permission types (non-stable)
-        dedup : Dedup.Dedup;  // For principal -> index conversion
+        principal_permissions : Map.Map<Nat32, Map.Map<Nat32, PermissionMetadata>>;  // Principal index -> Permission index -> Metadata
+        var permission_types : Map.Map<Nat32, Bool>;  // Set of valid permission type indices
+        dedup : Dedup.Dedup;  // For principal -> index and text -> index conversion
     };
 
     // Built-in permission type keys
     public let ADD_ADMIN_PERMISSION = "add_admin";
     public let REMOVE_ADMIN_PERMISSION = "remove_admin";
 
+    // Helper function to convert text to index
+    private func text_to_index(text : Text, dedup : Dedup.Dedup) : Nat32 {
+        let blob = Text.encodeUtf8(text);
+        dedup.getOrCreateIndex(blob);
+    };
+
     public func empty() : PermissionState {
         let dedup = Dedup.Dedup(?Dedup.empty());
         let state = {
             admins = Map.new<Nat32, PermissionMetadata>();
-            principal_permissions = Map.new<Nat32, Map.Map<Text, PermissionMetadata>>();
-            var permission_types = Map.new<Text, Bool>();
+            principal_permissions = Map.new<Nat32, Map.Map<Nat32, PermissionMetadata>>();
+            var permission_types = Map.new<Nat32, Bool>();
             dedup = dedup;
         };
 
         // Add built-in permission types
-        Map.set(state.permission_types, (Text.hash, Text.equal), ADD_ADMIN_PERMISSION, true);
-        Map.set(state.permission_types, (Text.hash, Text.equal), REMOVE_ADMIN_PERMISSION, true);
+        let add_admin_index = text_to_index(ADD_ADMIN_PERMISSION, dedup);
+        let remove_admin_index = text_to_index(REMOVE_ADMIN_PERMISSION, dedup);
+        Map.set(state.permission_types, (func (n : Nat32) : Nat32 { n }, Nat32.equal), add_admin_index, true);
+        Map.set(state.permission_types, (func (n : Nat32) : Nat32 { n }, Nat32.equal), remove_admin_index, true);
 
         state
     };
@@ -53,7 +61,7 @@ module Permissions {
     public func empty_stable() : StablePermissionState {
         {
             var admins = Map.new<Nat32, PermissionMetadata>();
-            var principal_permissions = Map.new<Nat32, Map.Map<Text, PermissionMetadata>>();
+            var principal_permissions = Map.new<Nat32, Map.Map<Nat32, PermissionMetadata>>();
         }
     };
 
@@ -61,14 +69,16 @@ module Permissions {
     public func from_dedup(dedup : Dedup.Dedup) : PermissionState {
         let state = {
             admins = Map.new<Nat32, PermissionMetadata>();
-            principal_permissions = Map.new<Nat32, Map.Map<Text, PermissionMetadata>>();
-            var permission_types = Map.new<Text, Bool>();
+            principal_permissions = Map.new<Nat32, Map.Map<Nat32, PermissionMetadata>>();
+            var permission_types = Map.new<Nat32, Bool>();
             dedup = dedup;
         };
 
         // Add built-in permission types
-        Map.set(state.permission_types, (Text.hash, Text.equal), ADD_ADMIN_PERMISSION, true);
-        Map.set(state.permission_types, (Text.hash, Text.equal), REMOVE_ADMIN_PERMISSION, true);
+        let add_admin_index = text_to_index(ADD_ADMIN_PERMISSION, dedup);
+        let remove_admin_index = text_to_index(REMOVE_ADMIN_PERMISSION, dedup);
+        Map.set(state.permission_types, (func (n : Nat32) : Nat32 { n }, Nat32.equal), add_admin_index, true);
+        Map.set(state.permission_types, (func (n : Nat32) : Nat32 { n }, Nat32.equal), remove_admin_index, true);
 
         state
     };
@@ -78,13 +88,15 @@ module Permissions {
         let state = {
             admins = stable_state.admins;
             principal_permissions = stable_state.principal_permissions;
-            var permission_types = Map.new<Text, Bool>();
+            var permission_types = Map.new<Nat32, Bool>();
             dedup = dedup;
         };
 
         // Re-add built-in permission types
-        Map.set(state.permission_types, (Text.hash, Text.equal), ADD_ADMIN_PERMISSION, true);
-        Map.set(state.permission_types, (Text.hash, Text.equal), REMOVE_ADMIN_PERMISSION, true);
+        let add_admin_index = text_to_index(ADD_ADMIN_PERMISSION, dedup);
+        let remove_admin_index = text_to_index(REMOVE_ADMIN_PERMISSION, dedup);
+        Map.set(state.permission_types, (func (n : Nat32) : Nat32 { n }, Nat32.equal), add_admin_index, true);
+        Map.set(state.permission_types, (func (n : Nat32) : Nat32 { n }, Nat32.equal), remove_admin_index, true);
 
         state
     };
@@ -116,8 +128,9 @@ module Permissions {
             return true;
         };
 
+        let permission_index = text_to_index(permission, state.dedup);
         // First check if permission type exists
-        switch (Map.get(state.permission_types, (Text.hash, Text.equal), permission)) {
+        switch (Map.get(state.permission_types, (func (n : Nat32) : Nat32 { n }, Nat32.equal), permission_index)) {
             case null { return false };
             case (?_) {};
         };
@@ -126,7 +139,7 @@ module Permissions {
         // Check if principal has the permission and it hasn't expired
         switch (Map.get(state.principal_permissions, (func (n : Nat32) : Nat32 { n }, Nat32.equal), index)) {
             case (?perm_map) {
-                switch (Map.get(perm_map, (Text.hash, Text.equal), permission)) {
+                switch (Map.get(perm_map, (func (n : Nat32) : Nat32 { n }, Nat32.equal), permission_index)) {
                     case (?metadata) {
                         // Check expiration
                         switch (metadata.expires_at) {
@@ -148,11 +161,12 @@ module Permissions {
         name : Text,
         state : PermissionState
     ) : Result.Result<(), Text> {
+        let name_index = text_to_index(name, state.dedup);
         // Check if permission type already exists
-        switch (Map.get(state.permission_types, (Text.hash, Text.equal), name)) {
+        switch (Map.get(state.permission_types, (func (n : Nat32) : Nat32 { n }, Nat32.equal), name_index)) {
             case (?_) { #err("Permission type already exists") };
             case null {
-                Map.set(state.permission_types, (Text.hash, Text.equal), name, true);
+                Map.set(state.permission_types, (func (n : Nat32) : Nat32 { n }, Nat32.equal), name_index, true);
                 #ok(());
             };
         };
@@ -170,8 +184,9 @@ module Permissions {
             return #err("Not authorized");
         };
 
+        let permission_index = text_to_index(permission, state.dedup);
         // Check if permission type exists
-        switch (Map.get(state.permission_types, (Text.hash, Text.equal), permission)) {
+        switch (Map.get(state.permission_types, (func (n : Nat32) : Nat32 { n }, Nat32.equal), permission_index)) {
             case null { return #err("Invalid permission type") };
             case (?_) {};
         };
@@ -181,7 +196,7 @@ module Permissions {
         let perm_map = switch (Map.get(state.principal_permissions, (func (n : Nat32) : Nat32 { n }, Nat32.equal), target_index)) {
             case (?existing) { existing };
             case null {
-                let new_map = Map.new<Text, PermissionMetadata>();
+                let new_map = Map.new<Nat32, PermissionMetadata>();
                 Map.set(state.principal_permissions, (func (n : Nat32) : Nat32 { n }, Nat32.equal), target_index, new_map);
                 new_map;
             };
@@ -195,7 +210,7 @@ module Permissions {
         };
 
         // Grant permission
-        Map.set(perm_map, (Text.hash, Text.equal), permission, metadata);
+        Map.set(perm_map, (func (n : Nat32) : Nat32 { n }, Nat32.equal), permission_index, metadata);
         #ok(());
     };
 
@@ -211,9 +226,10 @@ module Permissions {
         };
 
         let target_index = state.dedup.getOrCreateIndexForPrincipal(target);
+        let permission_index = text_to_index(permission, state.dedup);
         switch (Map.get(state.principal_permissions, (func (n : Nat32) : Nat32 { n }, Nat32.equal), target_index)) {
             case (?perm_map) {
-                Map.delete(perm_map, (Text.hash, Text.equal), permission);
+                Map.delete(perm_map, (func (n : Nat32) : Nat32 { n }, Nat32.equal), permission_index);
                 #ok(());
             };
             case null { #err("Principal has no permissions") };
