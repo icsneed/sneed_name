@@ -9,6 +9,7 @@ import Time "mo:base/Time";
 import Permissions "./Permissions";
 import Dedup "mo:dedup";
 import Blob "mo:base/Blob";
+import T "Types";
 
 module {
     public type SnsPermissionSettings = {
@@ -20,24 +21,15 @@ module {
         default_duration : ?Nat64;
     };
 
-    // Add neuron name record type
-    public type NeuronName = {
-        name : Text;
-        created_by : Principal;
-        created_at : Nat64;
-        updated_by : Principal;
-        updated_at : Nat64;
-    };
-
     // Stable state for SNS-specific settings
     public type StableSnsState = {
         var permission_settings : Map.Map<Nat32, SnsPermissionSettings>;  // Permission index -> Settings
-        var neuron_names : Map.Map<Nat32, NeuronName>;  // Neuron ID index -> Name
+        var neuron_names : Map.Map<Nat32, T.Name>;  // Neuron ID index -> Name
     };
 
     public type SnsState = {
         permission_settings : Map.Map<Nat32, SnsPermissionSettings>;
-        neuron_names : Map.Map<Nat32, NeuronName>;
+        neuron_names : Map.Map<Nat32, T.Name>;
         permissions : Permissions.PermissionsManager;
         dedup : Dedup.Dedup;
     };
@@ -45,7 +37,7 @@ module {
     public func empty_stable() : StableSnsState {
         {
             var permission_settings = Map.new<Nat32, SnsPermissionSettings>();
-            var neuron_names = Map.new<Nat32, NeuronName>();
+            var neuron_names = Map.new<Nat32, T.Name>();
         }
     };
 
@@ -219,19 +211,21 @@ module {
                 case (?existing) {
                     {
                         name = name;
+                        verified = existing.verified;  // Preserve verified status
+                        created = existing.created;
+                        updated = now;
                         created_by = existing.created_by;
-                        created_at = existing.created_at;
                         updated_by = caller;
-                        updated_at = now;
                     }
                 };
                 case null {
                     {
                         name = name;
+                        verified = false;  // New names start unverified
+                        created = now;
+                        updated = now;
                         created_by = caller;
-                        created_at = now;
                         updated_by = caller;
-                        updated_at = now;
                     }
                 };
             };
@@ -241,7 +235,7 @@ module {
         };
 
         // Get name for a neuron
-        public func get_sns_neuron_name(neuron_id : Nat64) : ?NeuronName {
+        public func get_sns_neuron_name(neuron_id : Nat64) : ?T.Name {
             let neuron_index = state.dedup.getOrCreateIndex(Blob.fromArray(nat64ToBytes(neuron_id)));
             Map.get(state.neuron_names, (func (n : Nat32) : Nat32 { n }, Nat32.equal), neuron_index);
         };
