@@ -8,6 +8,7 @@ import Result "mo:base/Result";
 import Time "mo:base/Time";
 import Nat64 "mo:base/Nat64";
 import Permissions "./Permissions";
+import NamePermissions "./sneed_name/NamePermissions";
 
 module {
     public func empty() : T.NameIndexState {
@@ -35,8 +36,10 @@ module {
                 return #err("Anonymous caller");
             };
             
-            // Allow if caller is setting their own name or if caller is an admin
-            if (not Principal.equal(caller, principal) and not permissions.is_admin(caller)) {
+            // Allow if caller is setting their own name or if caller has edit permission
+            if (not Principal.equal(caller, principal) and 
+                not permissions.is_admin(caller) and 
+                not permissions.check_permission(caller, NamePermissions.EDIT_ANY_NAME)) {
                 return #err("Not authorized: must be admin or setting own name");
             };
             
