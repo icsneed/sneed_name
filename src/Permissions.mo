@@ -1,61 +1,135 @@
 import Principal "mo:base/Principal";
-import Array "mo:base/Array";
+import Map "mo:map/Map";
 import Result "mo:base/Result";
 import Text "mo:base/Text";
-module Permissions {
+import Time "mo:base/Time";
+import Nat64 "mo:base/Nat64";
+import Array "mo:base/Array";
 
-    type PermissionsState = {
-        var admins : [Principal];
+module Permissions {
+    public type PermissionType = {
+        description : Text;
+        created : Nat64;
+        created_by : Principal;
+        check : (Principal) -> Bool;
+        check_async : ?(Principal -> async Bool);
     };
 
-    public func empty() : PermissionsState {
+    public type PermissionState = {
+        var admins : [Principal];
+        var permission_types : Map.Map<Text, PermissionType>;
+    };
+
+    public func empty() : PermissionState {
         {
             var admins = [];
-        };
+            var permission_types = Map.new<Text, PermissionType>();
+        }
     };
 
-    public func is_admin(principal : Principal, state : PermissionsState) : Bool {
+    public func check_admin(principal : Principal, state : PermissionState) : Bool {
         if (Principal.isController(principal)) {
             return true;
         };
-        Array.find<Principal>(state.admins, func(p) { Principal.equal(p, principal) }) != null;
+        for (admin in state.admins.vals()) {
+            if (Principal.equal(admin, principal)) {
+                return true;
+            };
+        };
+        false
     };
 
-    public func add_admin(caller: Principal, principal : Principal, state : PermissionsState) : Result.Result<(), Text> {
-        if (is_admin(caller, state)) {
-            return #err("Caller is not an admin: " # Principal.toText(caller));
-        };
-        if (is_admin(principal, state)) {
-            return #err("Principal is already an admin: " # Principal.toText(principal));
-        };
-        state.admins := Array.append(state.admins, [principal]);
-        #ok(());
-    };
+    public class Permissions(state : PermissionState) {
+        public func check_permission(principal : Principal, permission : Text) : async Bool {
+            // Admins have all permissions
+            if (check_admin(principal, state)) {
+                return true;
+            };
 
-    public func remove_admin(caller: Principal, principal : Principal, state : PermissionsState) : Result.Result<(), Text> {
-        if (is_admin(caller, state)) {
-            return #err("Caller is not an admin: " # Principal.toText(caller));
-        };
-        if (is_admin(principal, state)) {
-            return #err("Principal is not an admin: " # Principal.toText(principal));
-        };
-        state.admins := Array.filter(state.admins, func(p) { Principal.equal(p, principal) });
-        #ok(());
-    };
-
-    public class PermissionsManager(from: PermissionsState) {
-        private let state = from;
-
-        public func is_admin(principal : Principal) : Bool {
-            Permissions.is_admin(principal, state);
+            // Look up permission type
+            switch(Map.get(state.permission_types, (Text.hash, Text.equal), permission)) {
+                case (?perm_type) {
+                    // Try sync check first
+                    if (perm_type.check(principal)) {
+                        return true;
+                    };
+                    // Try async check if available
+                    switch(perm_type.check_async) {
+                        case (?async_check) { 
+                            return await async_check(principal);
+                        };
+                        case null { false };
+                    };
+                };
+                case null { false };
+            };
         };
 
-        public func add_admin(caller: Principal, principal : Principal) : Result.Result<(), Text> {
-            Permissions.add_admin(caller, principal, state);
+        public func add_permission_type(
+            caller : Principal,
+            name : Text,
+            description : Text,
+            check : (Principal) -> Bool,
+            check_async : ?(Principal -> async Bool)
+        ) : Result.Result<(), Text> {
+            if (not check_admin(caller, state)) {
+                return #err("Not authorized");
+            };
+
+            let perm_type : PermissionType = {
+                description = description;
+                created = Nat64.fromIntWrap(Time.now());
+                created_by = caller;
+                check = check;
+                check_async = check_async;
+            };
+
+            Map.set(state.permission_types, (Text.hash, Text.equal), name, perm_type);
+            #ok(());
         };
 
-        public func remove_admin(caller: Principal, principal : Principal) : Result.Result<(), Text> {
-            Permissions.remove_admin(caller, principal, state);
+        public func remove_permission_type(caller : Principal, name : Text) : Result.Result<(), Text> {
+            if (not check_admin(caller, state)) {
+                return #err("Not authorized");
+            };
+
+            Map.delete(state.permission_types, (Text.hash, Text.equal), name);
+            #ok(());
+        };
+
+        public func add_admin(caller : Principal, new_admin : Principal) : Result.Result<(), Text> {
+            if (not check_admin(caller, state)) {
+                return #err("Not authorized");
+            };
+            
+            // Check if already admin
+            if (check_admin(new_admin, state)) {
+                return #err("Already an admin");
+            };
+
+            state.admins := Array.append(state.admins, [new_admin]);
+            #ok(());
+        };
+
+        public func remove_admin(caller : Principal, admin : Principal) : Result.Result<(), Text> {
+            if (not check_admin(caller, state)) {
+                return #err("Not authorized");
+            };
+
+            // Can't remove self
+            if (Principal.equal(caller, admin)) {
+                return #err("Cannot remove self from admin");
+            };
+
+            // Can't remove controller
+            if (Principal.isController(admin)) {
+                return #err("Cannot remove controller from admin");
+            };
+
+            state.admins := Array.filter(state.admins, func(p : Principal) : Bool {
+                not Principal.equal(p, admin)
+            });
+            #ok(());
         };
     };
 }
