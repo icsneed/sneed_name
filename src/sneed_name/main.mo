@@ -25,6 +25,60 @@ actor {
   // Add name-specific permission types
   ignore NamePermissions.add_name_permissions(permissions);
 
+  // Admin management
+  public shared ({ caller }) func add_admin(admin : Principal, expires_at : ?Nat64) : async Result.Result<(), Text> {
+    await permissions.add_admin(caller, admin, expires_at);
+  };
+
+  public shared ({ caller }) func remove_admin(admin : Principal) : async Result.Result<(), Text> {
+    await permissions.remove_admin(caller, admin);
+  };
+
+  public query func is_admin(principal : Principal) : async Bool {
+    permissions.is_admin(principal);
+  };
+
+  public query ({ caller }) func caller_is_admin() : async Bool {
+    permissions.is_admin(caller);
+  };
+
+  // Permission management
+  public shared ({ caller }) func grant_permission(
+    target : Principal,
+    permission : Text,
+    expires_at : ?Nat64
+  ) : async Result.Result<(), Text> {
+    permissions.grant_permission(caller, target, permission, expires_at);
+  };
+
+  public shared ({ caller }) func revoke_permission(
+    target : Principal,
+    permission : Text
+  ) : async Result.Result<(), Text> {
+    permissions.revoke_permission(caller, target, permission);
+  };
+
+  public query func check_permission(
+    principal : Principal,
+    permission : Text
+  ) : async Bool {
+    permissions.check_permission(principal, permission);
+  };
+
+  public query ({ caller }) func check_caller_permission(
+    permission : Text
+  ) : async Bool {
+    permissions.check_permission(caller, permission);
+  };
+
+  // Permission type management
+  public shared ({ caller }) func add_permission_type(name : Text) : async Result.Result<(), Text> {
+    if (not permissions.is_admin(caller)) {
+      return #err("Not authorized");
+    };
+    permissions.add_permission_type(name);
+  };
+
   system func preupgrade() {
     // Save stable state
     stable_permission_state := {
