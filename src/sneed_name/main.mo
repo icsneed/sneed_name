@@ -15,6 +15,8 @@ actor {
 
   let dedup = Dedup.Dedup(dedup_state);
 
+  
+
   let nat32Utils = (func (n : Nat32) : Nat32 { n }, Nat32.equal);
   let textUtils = (Text.hash, Text.equal);
 
