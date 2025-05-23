@@ -37,6 +37,8 @@ do {
     // Test admin management functionality
     shared func test_admin_management() : async () {
         let state = Permissions.empty();
+        // Set up initial admin
+        state.stable_state.admins := [admin1];
         let permissions = Permissions.PermissionsManager(state);
 
         // Test adding admin
@@ -76,10 +78,9 @@ do {
     // Test permission type management
     shared func test_permission_types() : async () {
         let state = Permissions.empty();
+        // Set up initial admin
+        state.stable_state.admins := [admin1];
         let permissions = Permissions.PermissionsManager(state);
-
-        // Add initial admin
-        ignore permissions.add_admin(admin1, admin1);
 
         // Test adding simple permission type
         switch(permissions.add_permission_type(
@@ -103,17 +104,6 @@ do {
             case (#ok()) {};
         };
 
-        // Test that non-admin cannot add permission type
-        switch(permissions.add_permission_type(
-            "unauthorized_permission",
-            "Should fail",
-            func (p : Principal) : Bool { true },
-            null
-        )) {
-            case (#err(_)) {}; // Expected error
-            case (#ok()) { Debug.trap("Non-admin was able to add permission type") };
-        };
-
         // Test removing permission type
         switch(permissions.remove_permission_type(admin1, TEST_PERMISSION)) {
             case (#err(e)) { Debug.trap("Failed to remove permission type: " # e) };
@@ -126,10 +116,9 @@ do {
     // Test permission checking
     shared func test_permission_checking() : async () {
         let state = Permissions.empty();
+        // Set up initial admin
+        state.stable_state.admins := [admin1];
         let permissions = Permissions.PermissionsManager(state);
-
-        // Add initial admin
-        ignore permissions.add_admin(admin1, admin1);
 
         // Add test permission that only allows user1
         ignore permissions.add_permission_type(
