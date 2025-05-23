@@ -7,10 +7,12 @@ import NameIndex "../lib";
 import Permissions "../Permissions";
 import NamePermissions "./NamePermissions";
 import Timer "mo:base/Timer";
+import SnsPermissions "../SnsPermissions";
 
 actor {
-  // Only store admin list in stable memory
+  // Stable state
   stable var stable_permission_state : Permissions.StablePermissionState = Permissions.empty_stable();
+  stable var stable_sns_state : SnsPermissions.StableSnsState = SnsPermissions.empty_stable();
   stable var name_index_state : T.NameIndexState = NameIndex.empty();
 
   // Create name index first since we need its dedup
@@ -20,6 +22,10 @@ actor {
   var permission_state : Permissions.PermissionState = Permissions.from_stable(stable_permission_state, name_index.get_dedup());
   var permissions : Permissions.PermissionsManager = Permissions.PermissionsManager(permission_state);
 
+  // Create SNS permissions wrapper
+  var sns_state : SnsPermissions.SnsState = SnsPermissions.from_stable(stable_sns_state, permissions, name_index.get_dedup());
+  var sns_permissions : SnsPermissions.SnsPermissions = SnsPermissions.SnsPermissions(sns_state);
+
   // Now update name index with the permissions
   name_index := NameIndex.NameIndex(name_index_state, ?permissions);
 
@@ -27,12 +33,41 @@ actor {
   ignore NamePermissions.add_name_permissions(permissions);
 
   // Timer for cleaning up expired permissions (runs every hour)
+  // NB: We must use <system> tag here because the timer is a system timer
   let cleanup_timer = Timer.recurringTimer<system>(
     #seconds(3600),  // 1 hour
     func() : async () {
       permissions.cleanup_expired();
     }
   );
+
+  // SNS Permission Management
+  public shared ({ caller }) func set_sns_permission_settings(
+    permission : Text,
+    min_voting_power : Nat64,
+    max_duration : ?Nat64,
+    default_duration : ?Nat64
+  ) : async Result.Result<(), Text> {
+    let settings : SnsPermissions.SnsPermissionSettings = {
+      min_voting_power = min_voting_power;
+      max_duration = max_duration;
+      default_duration = default_duration;
+    };
+    sns_permissions.set_permission_settings(caller, permission, settings);
+  };
+
+  public query func get_sns_permission_settings(permission : Text) : async ?SnsPermissions.SnsPermissionSettings {
+    sns_permissions.get_permission_settings(permission);
+  };
+
+  public shared ({ caller }) func check_sns_permission(
+    principal : Principal,
+    permission : Text,
+    sns_governance : Principal
+  ) : async Bool {
+    let governance_canister : SnsPermissions.SnsGovernanceCanister = actor(Principal.toText(sns_governance));
+    await sns_permissions.check_sns_permission(principal, permission, governance_canister);
+  };
 
   // Admin management
   public shared ({ caller }) func add_admin(admin : Principal, expires_at : ?Nat64) : async Result.Result<(), Text> {
@@ -89,22 +124,10 @@ actor {
   };
 
   system func preupgrade() {
-    // Save stable state
-    stable_permission_state := {
-      var admins = permission_state.admins;
-      var principal_permissions = permission_state.principal_permissions;
-    };
-    // No need to update dedup_state as it's already in name_index_state
-    Timer.cancelTimer(cleanup_timer);  // Cancel timer before upgrade
+    Timer.cancelTimer(cleanup_timer);  // Only need to cancel the timer
   };
 
   system func postupgrade() {
-    // Re-initialize in the correct order
-    name_index := NameIndex.NameIndex(name_index_state, null);
-    permission_state := Permissions.from_stable(stable_permission_state, name_index.get_dedup());
-    permissions := Permissions.PermissionsManager(permission_state);
-    name_index := NameIndex.NameIndex(name_index_state, ?permissions);
-    
     // Re-add permission types after upgrade
     ignore NamePermissions.add_name_permissions(permissions);
   };
