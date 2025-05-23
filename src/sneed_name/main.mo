@@ -72,11 +72,11 @@ actor {
   };
 
   // Permission type management
-  public shared ({ caller }) func add_permission_type(name : Text) : async Result.Result<(), Text> {
+  public shared ({ caller }) func add_permission_type(name : Text, description : Text, max_duration : ?Nat64, default_duration : ?Nat64) : async Result.Result<(), Text> {
     if (not permissions.is_admin(caller)) {
       return #err("Not authorized");
     };
-    permissions.add_permission_type(name);
+    permissions.add_permission_type(name, description, max_duration, default_duration);
   };
 
   system func preupgrade() {
