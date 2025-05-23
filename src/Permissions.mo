@@ -25,13 +25,37 @@ module Permissions {
         var permission_types : Map.Map<Text, PermissionType>;
     };
 
+    // Built-in permission type keys
+    public let ADD_ADMIN_PERMISSION = "add_admin";
+    public let REMOVE_ADMIN_PERMISSION = "remove_admin";
+
     public func empty() : PermissionState {
-        {
-            stable_state = {
-                var admins = [];
-            };
+        let stable_state : StablePermissionState = {
+            var admins = [];
+        };
+        let state = {
+            stable_state = stable_state;
             var permission_types = Map.new<Text, PermissionType>();
-        }
+        };
+
+        // Add built-in permission types
+        ignore add_permission_type(
+            ADD_ADMIN_PERMISSION,
+            "Can add new admins",
+            func (p : Principal) : Bool { is_admin(p, state) },
+            null,
+            state
+        );
+
+        ignore add_permission_type(
+            REMOVE_ADMIN_PERMISSION,
+            "Can remove admins",
+            func (p : Principal) : Bool { is_admin(p, state) },
+            null,
+            state
+        );
+
+        state
     };
 
     public func empty_stable() : StablePermissionState {
@@ -119,9 +143,12 @@ module Permissions {
         caller : Principal, 
         new_admin : Principal, 
         state : PermissionState
-    ) : Result.Result<(), Text> {
+    ) : async Result.Result<(), Text> {
         if (not is_admin(caller, state)) {
-            return #err("Not authorized");
+            let has_permission = await check_permission(caller, ADD_ADMIN_PERMISSION, state);
+            if (not has_permission) {
+                return #err("Not authorized");
+            };
         };
         
         // Check if already admin
@@ -137,9 +164,12 @@ module Permissions {
         caller : Principal, 
         admin : Principal, 
         state : PermissionState
-    ) : Result.Result<(), Text> {
+    ) : async Result.Result<(), Text> {
         if (not is_admin(caller, state)) {
-            return #err("Not authorized");
+            let has_permission = await check_permission(caller, REMOVE_ADMIN_PERMISSION, state);
+            if (not has_permission) {
+                return #err("Not authorized");
+            };
         };
 
         // Can't remove self
@@ -166,13 +196,18 @@ module Permissions {
         public func is_admin(principal : Principal) : Bool {
             Permissions.is_admin(principal, state);
         };
-
-        public func add_admin(caller : Principal, new_admin : Principal) : Result.Result<(), Text> {
-            Permissions.add_admin(caller, new_admin, state);
+        public func add_admin(
+            caller : Principal, 
+            new_admin : Principal
+        ) : async Result.Result<(), Text> {
+            await Permissions.add_admin(caller, new_admin, state);
         };
 
-        public func remove_admin(caller : Principal, admin : Principal) : Result.Result<(), Text> {
-            Permissions.remove_admin(caller, admin, state);
+        public func remove_admin(
+            caller : Principal, 
+            admin : Principal
+        ) : async Result.Result<(), Text> {
+            await Permissions.remove_admin(caller, admin, state);
         };
 
         public func add_permission_type(
@@ -184,7 +219,10 @@ module Permissions {
             Permissions.add_permission_type(name, description, check, check_async, state);
         };
 
-        public func remove_permission_type(caller : Principal, name : Text) : Result.Result<(), Text> {
+        public func remove_permission_type(
+            caller : Principal, 
+            name : Text
+        ) : Result.Result<(), Text> {
             Permissions.remove_permission_type(caller, name, state);
         };
     };
