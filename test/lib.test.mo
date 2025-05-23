@@ -153,7 +153,12 @@ do {
         let permissions = Permissions.PermissionsManager(state);
 
         // Add test permission
-        ignore permissions.add_permission_type(TEST_PERMISSION);
+        ignore permissions.add_permission_type(
+            TEST_PERMISSION,
+            "Test permission for unit tests",
+            ?(24 * 60 * 60 * 1_000_000_000),  // 1 day max
+            ?(60 * 60 * 1_000_000_000)  // 1 hour default
+        );
 
         // Grant permission to user1
         switch(permissions.grant_permission(admin1, user1, TEST_PERMISSION, null)) {
