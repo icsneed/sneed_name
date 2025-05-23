@@ -107,7 +107,7 @@ module Permissions {
                         switch (metadata.expires_at) {
                             case (?expiry) {
                                 let now = Nat64.fromIntWrap(Time.now());
-                                now < expiry
+                                now <= expiry  // Permission is valid if current time is less than or equal to expiry
                             };
                             case null { true };
                         };
