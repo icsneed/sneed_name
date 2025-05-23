@@ -1,7 +1,7 @@
 # Permissions System Specification
 
 ## Overview
-A flexible and reusable permissions system where each permission type has its own check function.
+A flexible and reusable permissions system where each permission type has its own check function. The system is designed to handle canister upgrades by storing only stable data (admin list) and recreating permission types on each upgrade.
 
 ## Core Concepts
 
@@ -9,14 +9,17 @@ A flexible and reusable permissions system where each permission type has its ow
 - Each permission type is identified by a unique text key
 - Permission types have associated metadata:
   - Description
-  - Creation timestamp
-  - Created by principal
-  - Check function (the actual permission logic)
+  - Check function (sync)
+  - Optional async check function
+- Permission types are recreated on each canister upgrade
+- Permission types are defined in code, not stored in stable memory
 
 ### Permission Checking Flow
 1. Check if caller is in admin list (admins have all permissions)
 2. Look up permission type in map
-3. If found, call its check function
+3. If found:
+   - Try sync check first
+   - If sync check fails and async check exists, try async check
 4. If not found, return false
 
 ### Built-in Permission Types
@@ -32,28 +35,34 @@ A flexible and reusable permissions system where each permission type has its ow
 
 ### Administration
 - Admins have full system access
+- The canister controller is always an admin
 - Admins can:
   - Add/remove other admins
-  - Add new permission types
   - Remove permission types
-- Permission types can be removed/modified after creation
-- No versioning of permission types
+- Admin list is stored in stable memory and persists across upgrades
+- Cannot remove:
+  - Self from admin list
+  - Controller from admin list
 
-## Implementation Considerations
+## Implementation Details
 
 ### State Management
 ```motoko
-type PermissionState = {
+// Stable state - only contains principals
+type StablePermissionState = {
     var admins : [Principal];
-    var permission_types : Map<Text, PermissionType>;
+};
+
+// Non-stable state - contains function pointers
+type PermissionState = {
+    stable_state : StablePermissionState;
+    var permission_types : Map.Map<Text, PermissionType>;
 };
 
 type PermissionType = {
     description : Text;
-    created : Nat64;  // Timestamp
-    created_by : Principal;
-    check : (Principal) -> Bool;  // Sync version
-    check_async : ?(Principal) -> async Bool;  // Async version if needed
+    check : (Principal) -> Bool;
+    check_async : ?(Principal -> async Bool);
 };
 ```
 
@@ -62,66 +71,31 @@ type PermissionType = {
 // Check if principal has permission
 check_permission : shared (principal : Principal, permission : Text) -> async Bool;
 
-// Add new permission type (requires add_permission_type permission)
-add_permission_type : shared (
+// Add new permission type
+add_permission_type : (
     name : Text, 
     description : Text, 
     check : (Principal) -> Bool,
-    check_async : ?(Principal) -> async Bool
-) -> async Result<(), Text>;
+    check_async : ?(Principal -> async Bool)
+) -> Result<(), Text>;
 
 // Remove permission type (requires admin)
-remove_permission_type : shared (name : Text) -> async Result<(), Text>;
+remove_permission_type : (caller : Principal, name : Text) -> Result<(), Text>;
 
-// Set app checker (requires admin)
-set_app_checker : shared (checker : AppChecker) -> async Result<(), Text>;
+// Add admin (requires admin)
+add_admin : (caller : Principal, new_admin : Principal) -> Result<(), Text>;
 
-// Helper for apps to encode their settings
-encode_settings : shared <T>(settings : T) -> async Result<Blob, Text>;
+// Remove admin (requires admin)
+remove_admin : (caller : Principal, admin : Principal) -> Result<(), Text>;
 
-// Helper for apps to decode settings
-decode_settings : shared <T>(settings_blob : Blob) -> async Result<T, Text>;
+// Check if principal is admin
+is_admin : (principal : Principal) -> Bool;
 ```
 
 ### Example Usage
 ```motoko
-// Example: Creating a stake-based permission
-public func create_stake_permission() : async Result<(), Text> {
-    let token_canister = actor "..." : actor {
-        balance_of : shared (Principal) -> async Nat;
-    };
-    
-    let minimum_stake = 1_000_000;
-
-    await permissions.add_permission_type(
-        "can_moderate",
-        "Requires minimum stake to moderate",
-        func (p : Principal) : Bool { false },  // Sync always returns false
-        ?func (p : Principal) : async Bool {    // Async does the real check
-            let balance = await token_canister.balance_of(p);
-            balance >= minimum_stake
-        }
-    );
-};
-
-// Example: Creating a role-based permission
-public func create_role_permission() : async Result<(), Text> {
-    let role_canister = actor "..." : actor {
-        has_role : shared (Principal, Text) -> async Bool;
-    };
-
-    await permissions.add_permission_type(
-        "can_admin_forum",
-        "Requires forum admin role",
-        func (p : Principal) : Bool { false },  // Sync always returns false
-        ?func (p : Principal) : async Bool {    // Async does the real check
-            await role_canister.has_role(p, "forum_admin")
-        }
-    );
-};
-
-// Example: Simple synchronous permission
-await permissions.add_permission_type(
+// Example: Creating a simple permission type
+permissions.add_permission_type(
     "can_view_basic",
     "Basic view permission",
     func (p : Principal) : Bool {
@@ -129,12 +103,42 @@ await permissions.add_permission_type(
     },
     null  // No async check needed
 );
+
+// Example: Creating an async permission type
+permissions.add_permission_type(
+    "can_moderate",
+    "Requires minimum stake to moderate",
+    func (p : Principal) : Bool { false },  // Sync always returns false
+    ?func (p : Principal) : async Bool {    // Async does the real check
+        let balance = await token_canister.balance_of(p);
+        balance >= minimum_stake
+    }
+);
 ```
+
+## Upgrade Handling
+1. Only admin list is stored in stable memory
+2. Permission types are recreated after each upgrade
+3. Apps should:
+   - Store stable state in `StablePermissionState`
+   - Create non-stable state in `system func postupgrade()`
+   - Initialize permission types after upgrades
 
 ## Error Handling
 - Permission checks return `Bool` for simplicity
 - Administrative functions return `Result<(), Text>` with error messages
-- Encoding/decoding helpers return `Result<T, Text>` to handle Candid errors
+- Common error cases:
+  - "Not authorized"
+  - "Already an admin"
+  - "Cannot remove self from admin"
+  - "Cannot remove controller from admin"
+
+## Best Practices
+1. Keep permission types in separate modules (e.g., `NamePermissions.mo`)
+2. Use constants for permission type keys
+3. Prefer sync checks when possible for better performance
+4. Use async checks only when external data is needed
+5. Initialize permission types after deployment and upgrades
 
 ## Future Considerations
 1. Caching strategies for expensive permission checks

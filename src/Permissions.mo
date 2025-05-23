@@ -93,9 +93,9 @@ module Permissions {
         state : PermissionState
     ) : Result.Result<(), Text> {
         let perm_type : PermissionType = {
-            description = description;
-            check = check;
-            check_async = check_async;
+            description;
+            check;
+            check_async;
         };
 
         Map.set(state.permission_types, (Text.hash, Text.equal), name, perm_type);
