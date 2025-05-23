@@ -8,7 +8,7 @@ module NamePermissions {
     public let VERIFY_NAME = "verify_name";      // Can mark names as verified
 
     public func add_name_permissions(
-        permissions : Permissions.Permissions, 
+        permissions : Permissions.PermissionsManager, 
         caller : Principal
     ) : async Result.Result<(), Text> {
         // Add permission to edit any name
