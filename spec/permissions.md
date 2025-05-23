@@ -23,8 +23,9 @@ A flexible and reusable permissions system where each permission type has its ow
 4. If not found, return false
 
 ### Built-in Permission Types
-- `admin`: Full system access
-- `add_permission_type`: Ability to add new permission types
+- `admin`: Full system access (implicit, not a permission type)
+- `add_admin`: Ability to add new admins (alternative to being an admin)
+- `remove_admin`: Ability to remove admins (alternative to being an admin)
 - Additional built-in types can be added as needed
 
 ### App-Specific Permissions
@@ -39,6 +40,9 @@ A flexible and reusable permissions system where each permission type has its ow
 - Admins can:
   - Add/remove other admins
   - Remove permission types
+- Non-admins with appropriate permissions can:
+  - Add admins (with `add_admin` permission)
+  - Remove admins (with `remove_admin` permission)
 - Admin list is stored in stable memory and persists across upgrades
 - Cannot remove:
   - Self from admin list

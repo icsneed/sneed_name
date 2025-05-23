@@ -31,6 +31,7 @@ do {
         await test_admin_management();
         await test_permission_types();
         await test_permission_checking();
+        await test_non_admin_permissions();
         Debug.print("All permission tests passed! 🎉");
     };
 
@@ -140,6 +141,18 @@ do {
         let check4 = await permissions.check_permission(admin1, "nonexistent_permission");
         assert(check4 == true);
 
+        // Test built-in admin permissions
+        let check5 = await permissions.check_permission(admin1, Permissions.ADD_ADMIN_PERMISSION);
+        assert(check5 == true);
+        let check6 = await permissions.check_permission(admin1, Permissions.REMOVE_ADMIN_PERMISSION);
+        assert(check6 == true);
+
+        // Non-admins should not have admin permissions by default
+        let check7 = await permissions.check_permission(user1, Permissions.ADD_ADMIN_PERMISSION);
+        assert(check7 == false);
+        let check8 = await permissions.check_permission(user1, Permissions.REMOVE_ADMIN_PERMISSION);
+        assert(check8 == false);
+
         // Test async permission
         ignore permissions.add_permission_type(
             ASYNC_PERMISSION,
@@ -148,12 +161,50 @@ do {
             ?async_check
         );
 
-        let check5 = await permissions.check_permission(user2, ASYNC_PERMISSION);
-        assert(check5 == true);
-        let check6 = await permissions.check_permission(user1, ASYNC_PERMISSION);
-        assert(check6 == false);
+        let check9 = await permissions.check_permission(user2, ASYNC_PERMISSION);
+        assert(check9 == true);
+        let check10 = await permissions.check_permission(user1, ASYNC_PERMISSION);
+        assert(check10 == false);
 
         Debug.print("✓ Permission checking tests passed");
+    };
+
+    // Test non-admin permission management
+    shared func test_non_admin_permissions() : async () {
+        let state = Permissions.empty();
+        // Set up initial admin
+        state.stable_state.admins := [admin1];
+        let permissions = Permissions.PermissionsManager(state);
+
+        // Grant add_admin permission to user1
+        ignore permissions.add_permission_type(
+            Permissions.ADD_ADMIN_PERMISSION,
+            "Can add new admins",
+            func (p : Principal) : Bool { Principal.equal(p, user1) },
+            null
+        );
+
+        // Grant remove_admin permission to user2
+        ignore permissions.add_permission_type(
+            Permissions.REMOVE_ADMIN_PERMISSION,
+            "Can remove admins",
+            func (p : Principal) : Bool { Principal.equal(p, user2) },
+            null
+        );
+
+        // Test that user1 can add admin
+        switch(await permissions.add_admin(user1, user2)) {
+            case (#err(e)) { Debug.trap("User1 failed to add user2 as admin: " # e) };
+            case (#ok()) {};
+        };
+
+        // Test that user2 can remove admin
+        switch(await permissions.remove_admin(user2, user1)) {
+            case (#err(e)) { Debug.trap("User2 failed to remove user1 as admin: " # e) };
+            case (#ok()) {};
+        };
+
+        Debug.print("✓ Non-admin permission management tests passed");
     };
 
     run_tests();
