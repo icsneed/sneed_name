@@ -57,7 +57,7 @@ module Permissions {
             principal_permissions = Map.new<Nat32, Map.Map<Nat32, PermissionMetadata>>();
             var permission_types = Map.new<Nat32, PermissionType>();
             dedup = dedup;
-            var ban_checker = null;
+            var ban_checker = (null : ?BanChecker);
         };
 
         // Add built-in permission types
@@ -95,7 +95,7 @@ module Permissions {
             principal_permissions = Map.new<Nat32, Map.Map<Nat32, PermissionMetadata>>();
             var permission_types = Map.new<Nat32, PermissionType>();
             dedup = dedup;
-            var ban_checker = null;
+            var ban_checker = (null : ?BanChecker);
         };
 
         // Add built-in permission types
@@ -126,7 +126,7 @@ module Permissions {
             principal_permissions = stable_state.principal_permissions;
             var permission_types = Map.new<Nat32, PermissionType>();
             dedup = dedup;
-            var ban_checker = null;
+            var ban_checker = (null : ?BanChecker);
         };
 
         // Re-add built-in permission types

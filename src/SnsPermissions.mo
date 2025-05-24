@@ -46,13 +46,14 @@ module {
     public func from_stable(
         stable_state : StableSnsState,
         permissions : Permissions.PermissionsManager,
-        dedup : Dedup.Dedup
+        dedup : Dedup.Dedup,
+        bans : Bans.Bans
     ) : SnsState {
         {
             permission_settings = stable_state.permission_settings;
             permissions = permissions;
             dedup = dedup;
-            bans = permissions.get_bans();  // Get ban system from permissions
+            bans = bans;
         };
     };
 

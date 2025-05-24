@@ -303,7 +303,8 @@ do {
         let sns_state = SnsPermissions.from_stable(
             SnsPermissions.empty_stable(),
             permissions,
-            state.dedup
+            state.dedup,
+            ban_system  // Add ban system parameter
         );
         let sns_permissions = SnsPermissions.SnsPermissions(sns_state);
 

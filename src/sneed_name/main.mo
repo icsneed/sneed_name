@@ -10,6 +10,7 @@ import Timer "mo:base/Timer";
 import SnsPermissions "../SnsPermissions";
 import Bans "../Bans";
 import BanPermissions "../BanPermissions";
+import Vector "mo:vector";
 
 actor {
   // Stable state
@@ -19,7 +20,11 @@ actor {
   stable var ban_state : Bans.BanState = Bans.empty();
 
   // Create name index first since we need its dedup
-  var name_index : NameIndex.NameIndex = NameIndex.NameIndex(name_index_state, null);  // Pass null for permissions initially
+  var name_index : NameIndex.NameIndex = NameIndex.NameIndex(
+    name_index_state,  // from
+    null,  // sns_permissions
+    null   // sns_governance
+  );  // Pass null for permissions initially
   
   // Create ban system with dedup
   var ban_system = Bans.Bans(ban_state, name_index.get_dedup(), func(p: Principal, perm: Text) : Bool { false });  // Pass dummy permission checker initially
@@ -39,11 +44,20 @@ actor {
   });
 
   // Create SNS permissions wrapper
-  var sns_state : SnsPermissions.SnsState = SnsPermissions.from_stable(stable_sns_state, permissions, name_index.get_dedup());
+  var sns_state : SnsPermissions.SnsState = SnsPermissions.from_stable(
+    stable_sns_state, 
+    permissions, 
+    name_index.get_dedup(),
+    ban_system
+  );
   var sns_permissions : SnsPermissions.SnsPermissions = SnsPermissions.SnsPermissions(sns_state);
 
   // Now update name index with the permissions
-  name_index := NameIndex.NameIndex(name_index_state, ?permissions);
+  name_index := NameIndex.NameIndex(
+    name_index_state,
+    ?sns_permissions,
+    null  // No governance canister yet
+  );
 
   // Add permission types
   ignore NamePermissions.add_name_permissions(permissions);
@@ -192,11 +206,11 @@ actor {
     sns_governance : Principal
   ) : async Result.Result<(), Text> {
     let governance_canister : SnsPermissions.SnsGovernanceCanister = actor(Principal.toText(sns_governance));
-    await sns_permissions.set_sns_neuron_name(caller, neuron_id, name, governance_canister);
+    await* name_index.set_sns_neuron_name(caller, neuron_id, name, governance_canister);
   };
 
   public query func get_sns_neuron_name(neuron_id : { id : Blob }) : async ?T.Name {
-    sns_permissions.get_sns_neuron_name(neuron_id);
+    name_index.get_sns_neuron_name(neuron_id);
   };
 
   public shared ({ caller }) func remove_sns_neuron_name(
@@ -204,7 +218,7 @@ actor {
     sns_governance : Principal
   ) : async Result.Result<(), Text> {
     let governance_canister : SnsPermissions.SnsGovernanceCanister = actor(Principal.toText(sns_governance));
-    await sns_permissions.remove_sns_neuron_name(caller, neuron_id, governance_canister);
+    await* name_index.remove_sns_neuron_name(caller, neuron_id, governance_canister);
   };
 
   // Ban Management
@@ -233,11 +247,11 @@ actor {
     expiry_timestamp: Int;
     reason: Text;
   }], Text> {
-    ban_system.get_ban_log();
+    ban_system.get_ban_log(caller);
   };
 
   public shared ({ caller }) func get_banned_users() : async Result.Result<[(Principal, Int)], Text> {
-    ban_system.get_banned_users();
+    ban_system.get_banned_users(caller);
   };
 
   public shared ({ caller }) func get_user_ban_history(
@@ -252,8 +266,22 @@ actor {
   };
 
   public shared ({ caller }) func update_ban_settings(
-    settings: Bans.BanSettings
+    settings: {
+      min_ban_duration_hours: Nat;
+      duration_settings: [Bans.BanDurationSetting];  // Use array instead of Vector
+    }
   ) : async Result.Result<(), Text> {
-    ban_system.update_ban_settings(caller, settings);
+    // Convert array to Vector for internal use
+    let duration_settings = Vector.new<Bans.BanDurationSetting>();
+    for (setting in settings.duration_settings.vals()) {
+      Vector.add(duration_settings, setting);
+    };
+    
+    let ban_settings : Bans.BanSettings = {
+      min_ban_duration_hours = settings.min_ban_duration_hours;
+      duration_settings = duration_settings;
+    };
+    
+    ban_system.update_ban_settings(caller, ban_settings)
   };
 };
