@@ -44,6 +44,7 @@ actor {
   // Add permission types
   ignore NamePermissions.add_name_permissions(permissions);
   ignore BanPermissions.add_ban_permissions(permissions);
+  ignore NameIndex.add_sns_permissions(permissions);
 
   // Timer for cleaning up expired permissions and bans (runs every hour)
   // NB: We must use <system> tag here because the timer is a system timer
@@ -146,6 +147,7 @@ actor {
     // Re-add permission types after upgrade
     ignore NamePermissions.add_name_permissions(permissions);
     ignore BanPermissions.add_ban_permissions(permissions);
+    ignore NameIndex.add_sns_permissions(permissions);
   };
 
   public query func get_principal_name(principal : Principal) : async ?T.Name {
@@ -198,6 +200,24 @@ actor {
   ) : async T.NameResult<()> {
     let governance_canister : SnsPermissions.SnsGovernanceCanister = actor(Principal.toText(sns_governance));
     await* name_index.remove_sns_neuron_name(caller, neuron_id, governance_canister);
+  };
+
+  // SNS Principal Name Management
+  public shared ({ caller }) func set_sns_principal_name(
+    target : Principal,
+    name : Text,
+    sns_governance : Principal
+  ) : async T.NameResult<()> {
+    let governance_canister : SnsPermissions.SnsGovernanceCanister = actor(Principal.toText(sns_governance));
+    await* name_index.set_sns_principal_name(caller, target, name, governance_canister);
+  };
+
+  public shared ({ caller }) func remove_sns_principal_name(
+    target : Principal,
+    sns_governance : Principal
+  ) : async T.NameResult<()> {
+    let governance_canister : SnsPermissions.SnsGovernanceCanister = actor(Principal.toText(sns_governance));
+    await* name_index.remove_sns_principal_name(caller, target, governance_canister);
   };
 
   // Name Verification Management

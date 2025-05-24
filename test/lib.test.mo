@@ -363,6 +363,12 @@ do {
         let ban_state = Bans.empty();
         let ban_system = Bans.Bans(ban_state, state.dedup, func(p: Principal, perm: Text) : Bool { false });
 
+        // Add SNS permission types
+        switch(Lib.add_sns_permissions(permissions)) {
+            case (#Err(e)) { Debug.trap("Failed to add SNS permissions: " # debug_show(e)) };
+            case (#Ok()) {};
+        };
+
         // Set up SNS permissions
         let sns_state = SnsPermissions.from_stable(
             SnsPermissions.empty_stable(),
@@ -394,6 +400,17 @@ do {
             case (#Ok()) {};
         };
 
+        // Set permission settings for SNS principal names as well
+        switch(sns_permissions.set_permission_settings(
+            admin1,
+            Principal.fromActor(mock_governance),
+            Lib.SET_SNS_PRINCIPAL_NAME_PERMISSION,
+            settings
+        )) {
+            case (#Err(e)) { Debug.trap("Failed to set SNS principal permission settings: " # debug_show(e)) };
+            case (#Ok()) {};
+        };
+
         // Test neuron access
         let test_neuron_id = { id = Text.encodeUtf8("neuron1") };
         let has_access = await sns_permissions.has_neuron_access(
@@ -421,6 +438,42 @@ do {
                 assert(name.name == "test-neuron");
                 assert(name.created_by == user1);
             };
+        };
+
+        // Test setting SNS principal name
+        switch(await* name_index.set_sns_principal_name(
+            user1,
+            user1,
+            "test-principal",
+            mock_governance
+        )) {
+            case (#Err(e)) { Debug.trap("Failed to set SNS principal name: " # debug_show(e)) };
+            case (#Ok()) {};
+        };
+
+        // Verify principal name was set
+        switch(name_index.get_principal_name(user1)) {
+            case null { Debug.trap("Principal name not found") };
+            case (?name) {
+                assert(name.name == "test-principal");
+                assert(name.created_by == user1);
+            };
+        };
+
+        // Test removing SNS principal name
+        switch(await* name_index.remove_sns_principal_name(
+            user1,
+            user1,
+            mock_governance
+        )) {
+            case (#Err(e)) { Debug.trap("Failed to remove SNS principal name: " # debug_show(e)) };
+            case (#Ok()) {};
+        };
+
+        // Verify principal name was removed
+        switch(name_index.get_principal_name(user1)) {
+            case null {}; // Expected
+            case (?name) { Debug.trap("Principal name should have been removed") };
         };
 
         Debug.print("✓ SNS permissions tests passed");
@@ -838,6 +891,21 @@ do {
             };
             case (#Err(e)) { Debug.trap("Expected Banned error, got: " # debug_show(e)) };
             case (#Ok()) { Debug.trap("Banned user should not be able to set neuron names") };
+        };
+
+        // Test that banned user cannot set SNS principal names - expect Banned error
+        switch(await* name_index.set_sns_principal_name(
+            user1,
+            user1,
+            "test-banned-principal",  // Use a different name to avoid conflicts
+            mock_governance
+        )) {
+            case (#Err(#Banned(info))) { 
+                assert(Text.contains(info.reason, #text "banned"));
+                assert(info.expires_at != null);
+            };
+            case (#Err(e)) { Debug.trap("Expected Banned error, got: " # debug_show(e)) };
+            case (#Ok()) { Debug.trap("Banned user should not be able to set SNS principal names") };
         };
 
         // Grant unban permission to admin1

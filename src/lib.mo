@@ -401,6 +401,135 @@ module {
             #Ok(());
         };
 
+        // SNS Principal Name Management
+        public func set_sns_principal_name(
+            caller : Principal,
+            target : Principal,
+            name : Text,
+            sns_governance : SnsPermissions.SnsGovernanceCanister
+        ) : async* T.NameResult<()> {
+            // Check permissions
+            switch (await* can_set_principal_name(caller, target, sns_governance)) {
+                case (#Allowed) {};
+                case (#Banned(reason)) {
+                    return #Err(#Banned({ reason = reason.reason; expires_at = reason.expires_at }));
+                };
+                case (#PermissionNotGranted) {
+                    return #Err(#NotAuthorized({ required_permission = ?SET_SNS_PRINCIPAL_NAME_PERMISSION }));
+                };
+                case (#PermissionExpired(info)) {
+                    return #Err(#PermissionExpired({ permission = SET_SNS_PRINCIPAL_NAME_PERMISSION; expired_at = info.expired_at }));
+                };
+                case (#PermissionTypeNotFound(info)) {
+                    return #Err(#PermissionNotFound({ permission = info.permission }));
+                };
+                case (#NoPrincipalPermissions) {
+                    return #Err(#NotAuthorized({ required_permission = ?SET_SNS_PRINCIPAL_NAME_PERMISSION }));
+                };
+                case (#PermissionTypeExists(_)) {
+                    return #Err(#NotAuthorized({ required_permission = ?SET_SNS_PRINCIPAL_NAME_PERMISSION }));
+                };
+            };
+
+            let name_lower = Text.toLowercase(name);
+            
+            // Check if name is already taken by someone else
+            switch (Map.get(state.index_to_name, textUtils, name_lower)) {
+                case (?existing_index) {
+                    let target_index = dedup.getOrCreateIndexForPrincipal(target);
+                    if (existing_index != target_index) {
+                        let taken_by = dedup.getPrincipalForIndex(existing_index);
+                        return #Err(#NameAlreadyTaken({ name = name; taken_by = taken_by }));
+                    };
+                };
+                case null {};
+            };
+
+            let target_index = dedup.getOrCreateIndexForPrincipal(target);
+            let now = Nat64.fromIntWrap(Time.now());
+            
+            // Create or update name record
+            let name_record = switch (Map.get(state.name_to_index, nat32Utils, target_index)) {
+                case (?existing) {
+                    // If the name is changing, unverify it
+                    let should_unverify = existing.name != name;
+                    {
+                        name = name;
+                        verified = if (should_unverify) { false } else { existing.verified };
+                        created = existing.created;
+                        updated = now;
+                        created_by = existing.created_by;
+                        updated_by = caller;
+                    }
+                };
+                case null {
+                    {
+                        name = name;
+                        verified = false;  // New names start unverified
+                        created = now;
+                        updated = now;
+                        created_by = caller;
+                        updated_by = caller;
+                    }
+                };
+            };
+
+            // Remove old name from inverse map if it exists
+            switch (Map.get(state.name_to_index, nat32Utils, target_index)) {
+                case (?old_record) {
+                    Map.delete(state.index_to_name, textUtils, Text.toLowercase(old_record.name));
+                };
+                case null {};
+            };
+
+            // Set new mappings
+            Map.set(state.name_to_index, nat32Utils, target_index, name_record);
+            Map.set(state.index_to_name, textUtils, name_lower, target_index);
+            #Ok(());
+        };
+
+        public func remove_sns_principal_name(
+            caller : Principal,
+            target : Principal,
+            sns_governance : SnsPermissions.SnsGovernanceCanister
+        ) : async* T.NameResult<()> {
+            // Check permissions
+            switch (await* can_set_principal_name(caller, target, sns_governance)) {
+                case (#Allowed) {};
+                case (#Banned(reason)) {
+                    return #Err(#Banned({ reason = reason.reason; expires_at = reason.expires_at }));
+                };
+                case (#PermissionNotGranted) {
+                    return #Err(#NotAuthorized({ required_permission = ?REMOVE_SNS_PRINCIPAL_NAME_PERMISSION }));
+                };
+                case (#PermissionExpired(info)) {
+                    return #Err(#PermissionExpired({ permission = REMOVE_SNS_PRINCIPAL_NAME_PERMISSION; expired_at = info.expired_at }));
+                };
+                case (#PermissionTypeNotFound(info)) {
+                    return #Err(#PermissionNotFound({ permission = info.permission }));
+                };
+                case (#NoPrincipalPermissions) {
+                    return #Err(#NotAuthorized({ required_permission = ?REMOVE_SNS_PRINCIPAL_NAME_PERMISSION }));
+                };
+                case (#PermissionTypeExists(_)) {
+                    return #Err(#NotAuthorized({ required_permission = ?REMOVE_SNS_PRINCIPAL_NAME_PERMISSION }));
+                };
+            };
+
+            let target_index = dedup.getOrCreateIndexForPrincipal(target);
+            
+            // Remove old name from inverse map if it exists
+            switch (Map.get(state.name_to_index, nat32Utils, target_index)) {
+                case (?old_record) {
+                    Map.delete(state.index_to_name, textUtils, Text.toLowercase(old_record.name));
+                };
+                case null {};
+            };
+
+            Map.delete(state.name_to_index, nat32Utils, target_index);
+            #Ok(());
+        };
+
         // Verification methods
         public func verify_name(caller : Principal, target_name : Text) : async* T.NameResult<()> {
             // Check if caller has verification permission
@@ -499,5 +628,60 @@ module {
                 };
             };
         };
+    };
+
+    // Function to add SNS permission types
+    public func add_sns_permissions(
+        permissions : Permissions.PermissionsManager
+    ) : T.PermissionResult<()> {
+        // Add permission type for setting SNS neuron names
+        let set_neuron_result = permissions.add_permission_type(
+            SET_SNS_NEURON_NAME_PERMISSION,
+            "Permission to set SNS neuron names",
+            ?(365 * 24 * 60 * 60 * 1_000_000_000),  // 1 year max
+            ?(30 * 24 * 60 * 60 * 1_000_000_000)    // 30 days default
+        );
+        switch(set_neuron_result) {
+            case (#Err(e)) { return #Err(e) };
+            case (#Ok()) {};
+        };
+
+        // Add permission type for removing SNS neuron names
+        let remove_neuron_result = permissions.add_permission_type(
+            REMOVE_SNS_NEURON_NAME_PERMISSION,
+            "Permission to remove SNS neuron names",
+            ?(365 * 24 * 60 * 60 * 1_000_000_000),  // 1 year max
+            ?(30 * 24 * 60 * 60 * 1_000_000_000)    // 30 days default
+        );
+        switch(remove_neuron_result) {
+            case (#Err(e)) { return #Err(e) };
+            case (#Ok()) {};
+        };
+
+        // Add permission type for setting SNS principal names
+        let set_principal_result = permissions.add_permission_type(
+            SET_SNS_PRINCIPAL_NAME_PERMISSION,
+            "Permission to set SNS principal names",
+            ?(365 * 24 * 60 * 60 * 1_000_000_000),  // 1 year max
+            ?(30 * 24 * 60 * 60 * 1_000_000_000)    // 30 days default
+        );
+        switch(set_principal_result) {
+            case (#Err(e)) { return #Err(e) };
+            case (#Ok()) {};
+        };
+
+        // Add permission type for removing SNS principal names
+        let remove_principal_result = permissions.add_permission_type(
+            REMOVE_SNS_PRINCIPAL_NAME_PERMISSION,
+            "Permission to remove SNS principal names",
+            ?(365 * 24 * 60 * 60 * 1_000_000_000),  // 1 year max
+            ?(30 * 24 * 60 * 60 * 1_000_000_000)    // 30 days default
+        );
+        switch(remove_principal_result) {
+            case (#Err(e)) { return #Err(e) };
+            case (#Ok()) {};
+        };
+
+        #Ok(());
     };
 }
