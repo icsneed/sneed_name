@@ -129,6 +129,20 @@ do {
         Map.set(state.admins, (func (n : Nat32) : Nat32 { n }, Nat32.equal), admin1_index, admin_metadata);
         let permissions = Permissions.PermissionsManager(state);
 
+        // Add built-in permission types
+        ignore permissions.add_permission_type(
+            Permissions.ADD_ADMIN_PERMISSION,
+            "Can add new admins",
+            ?(365 * 24 * 60 * 60 * 1_000_000_000),  // 1 year max
+            ?(30 * 24 * 60 * 60 * 1_000_000_000)    // 30 days default
+        );
+        ignore permissions.add_permission_type(
+            Permissions.REMOVE_ADMIN_PERMISSION,
+            "Can remove admins",
+            ?(365 * 24 * 60 * 60 * 1_000_000_000),  // 1 year max
+            ?(30 * 24 * 60 * 60 * 1_000_000_000)    // 30 days default
+        );
+
         // Test adding simple permission type
         switch(permissions.add_permission_type(
             TEST_PERMISSION,
@@ -262,6 +276,20 @@ do {
         let admin1_index = state.dedup.getOrCreateIndexForPrincipal(admin1);
         Map.set(state.admins, (func (n : Nat32) : Nat32 { n }, Nat32.equal), admin1_index, admin_metadata);
         let permissions = Permissions.PermissionsManager(state);
+
+        // Add built-in permission types first
+        ignore permissions.add_permission_type(
+            Permissions.ADD_ADMIN_PERMISSION,
+            "Can add new admins",
+            ?(365 * 24 * 60 * 60 * 1_000_000_000),  // 1 year max
+            ?(30 * 24 * 60 * 60 * 1_000_000_000)    // 30 days default
+        );
+        ignore permissions.add_permission_type(
+            Permissions.REMOVE_ADMIN_PERMISSION,
+            "Can remove admins",
+            ?(365 * 24 * 60 * 60 * 1_000_000_000),  // 1 year max
+            ?(30 * 24 * 60 * 60 * 1_000_000_000)    // 30 days default
+        );
 
         // Grant add_admin permission to user1
         switch(permissions.grant_permission(admin1, user1, Permissions.ADD_ADMIN_PERMISSION, null)) {
