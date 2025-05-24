@@ -2,6 +2,7 @@ import Result "mo:base/Result";
 import Nat32 "mo:base/Nat32";
 import Principal "mo:base/Principal";
 import Text "mo:base/Text";
+import Int "mo:base/Int";
 import T "../Types";
 import NameIndex "../lib";
 import Permissions "../Permissions";
@@ -12,6 +13,7 @@ import Bans "../Bans";
 import BanPermissions "../BanPermissions";
 import Vector "mo:vector";
 import Dedup "mo:dedup";
+import Time "mo:base/Time";
 
 actor {
   // Stable state
@@ -82,11 +84,11 @@ actor {
   };
 
   // Admin management
-  public shared ({ caller }) func add_admin(admin : Principal, expires_at : ?Nat64) : async Result.Result<(), Text> {
+  public shared ({ caller }) func add_admin(admin : Principal, expires_at : ?Nat64) : async T.AdminResult<()> {
     await permissions.add_admin(caller, admin, expires_at);
   };
 
-  public shared ({ caller }) func remove_admin(admin : Principal) : async Result.Result<(), Text> {
+  public shared ({ caller }) func remove_admin(admin : Principal) : async T.AdminResult<()> {
     await permissions.remove_admin(caller, admin);
   };
 
@@ -103,14 +105,14 @@ actor {
     target : Principal,
     permission : Text,
     expires_at : ?Nat64
-  ) : async Result.Result<(), Text> {
+  ) : async T.PermissionResult<()> {
     permissions.grant_permission(caller, target, permission, expires_at);
   };
 
   public shared ({ caller }) func revoke_permission(
     target : Principal,
     permission : Text
-  ) : async Result.Result<(), Text> {
+  ) : async T.PermissionResult<()> {
     permissions.revoke_permission(caller, target, permission);
   };
 
@@ -150,7 +152,7 @@ actor {
     name_index.get_principal_name(principal);
   };
 
-  public shared ({ caller }) func set_principal_name(principal : Principal, name : Text) : async Result.Result<(), Text> {
+  public shared ({ caller }) func set_principal_name(principal : Principal, name : Text) : async T.NameResult<()> {
     await* name_index.set_principal_name(caller, principal, name);
   };
 
@@ -158,7 +160,7 @@ actor {
     name_index.get_caller_name(caller);
   };
 
-  public shared ({ caller }) func set_caller_name(name : Text) : async Result.Result<(), Text> {
+  public shared ({ caller }) func set_caller_name(name : Text) : async T.NameResult<()> {
     await* name_index.set_caller_name(caller, name);
   };
 
@@ -181,7 +183,7 @@ actor {
     neuron_id : { id : Blob },
     name : Text,
     sns_governance : Principal
-  ) : async Result.Result<(), Text> {
+  ) : async T.NameResult<()> {
     let governance_canister : SnsPermissions.SnsGovernanceCanister = actor(Principal.toText(sns_governance));
     await* name_index.set_sns_neuron_name(caller, neuron_id, name, governance_canister);
   };
@@ -193,7 +195,7 @@ actor {
   public shared ({ caller }) func remove_sns_neuron_name(
     neuron_id : { id : Blob },
     sns_governance : Principal
-  ) : async Result.Result<(), Text> {
+  ) : async T.NameResult<()> {
     let governance_canister : SnsPermissions.SnsGovernanceCanister = actor(Principal.toText(sns_governance));
     await* name_index.remove_sns_neuron_name(caller, neuron_id, governance_canister);
   };
@@ -203,14 +205,24 @@ actor {
     user: Principal,
     duration_hours: ?Nat,
     reason: Text
-  ) : async Result.Result<(), Text> {
-    permissions.ban_user(caller, user, duration_hours, reason);
+  ) : async T.PermissionResult<()> {
+    // Convert duration_hours to expires_at timestamp
+    let expires_at = switch (duration_hours) {
+      case (null) { null };
+      case (?hours) { 
+        let now = Time.now();
+        let duration_nanos = Int.abs(hours) * 60 * 60 * 1_000_000_000; // Convert hours to nanoseconds
+        ?(now + duration_nanos)
+      };
+    };
+    
+    permissions.ban_user(caller, user, reason, expires_at);
   };
 
   public shared ({ caller }) func unban_user(
     user: Principal
-  ) : async Result.Result<(), Text> {
-    permissions.unban_user(caller, user)
+  ) : async T.PermissionResult<()> {
+    permissions.unban_user(caller, user);
   };
 
   public query func check_ban_status(user: Principal) : async Result.Result<Text, Text> {

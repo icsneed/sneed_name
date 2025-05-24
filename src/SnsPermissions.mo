@@ -231,7 +231,22 @@ module {
             permission : Text,
             expires_at : ?Nat64
         ) : Result.Result<(), Text> {
-            state.permissions.grant_permission(caller, target, permission, expires_at);
+            switch (state.permissions.grant_permission(caller, target, permission, expires_at)) {
+                case (#Ok()) { #ok(()) };
+                case (#Err(err)) {
+                    switch (err) {
+                        case (#NotAuthorized(info)) { #err("Not authorized: " # info.required_permission) };
+                        case (#Banned(info)) { #err("User is banned: " # info.reason) };
+                        case (#PermissionTypeNotFound(info)) { #err("Permission type not found: " # info.permission) };
+                        case (#ExpirationExceedsMaxDuration(_)) { #err("Expiration exceeds maximum duration") };
+                        case (#PermissionNotFound(info)) { #err("Permission not found: " # info.permission) };
+                        case (#PermissionTypeExists(info)) { #err("Permission type already exists: " # info.permission) };
+                        case (#PermissionExpired(_)) { #err("Permission expired") };
+                        case (#NoPrincipalPermissions(_)) { #err("No permissions for principal") };
+                        case (#InvalidPermissionType(info)) { #err("Invalid permission type: " # info.permission) };
+                    }
+                };
+            };
         };
 
         public func revoke_permission(
@@ -239,7 +254,22 @@ module {
             target : Principal,
             permission : Text
         ) : Result.Result<(), Text> {
-            state.permissions.revoke_permission(caller, target, permission);
+            switch (state.permissions.revoke_permission(caller, target, permission)) {
+                case (#Ok()) { #ok(()) };
+                case (#Err(err)) {
+                    switch (err) {
+                        case (#NotAuthorized(info)) { #err("Not authorized: " # info.required_permission) };
+                        case (#Banned(info)) { #err("User is banned: " # info.reason) };
+                        case (#PermissionTypeNotFound(info)) { #err("Permission type not found: " # info.permission) };
+                        case (#ExpirationExceedsMaxDuration(_)) { #err("Expiration exceeds maximum duration") };
+                        case (#PermissionNotFound(info)) { #err("Permission not found: " # info.permission) };
+                        case (#PermissionTypeExists(info)) { #err("Permission type already exists: " # info.permission) };
+                        case (#PermissionExpired(_)) { #err("Permission expired") };
+                        case (#NoPrincipalPermissions(_)) { #err("No permissions for principal") };
+                        case (#InvalidPermissionType(info)) { #err("Invalid permission type: " # info.permission) };
+                    }
+                };
+            };
         };
 
         public func cleanup_expired() {

@@ -52,9 +52,9 @@ module {
             Map.get(state.name_to_index, nat32Utils, index);
         };
 
-        public func set_principal_name(caller : Principal, principal : Principal, name : Text) : async* Result.Result<(), Text> {
+        public func set_principal_name(caller : Principal, principal : Principal, name : Text) : async* T.NameResult<()> {
             if (Principal.isAnonymous(caller)) {
-                return #err("Anonymous caller");
+                return #Err(#AnonymousCaller);
             };
 
             // First check permissions
@@ -74,7 +74,16 @@ module {
             };
 
             if (not has_permission) {
-                return #err("Not authorized: must be admin or setting own name");
+                // Check if user is banned to provide specific error
+                switch (permissions) {
+                    case (?p) {
+                        if (p.is_banned(caller)) {
+                            return #Err(#Banned({ reason = "User is currently banned"; expires_at = null }));
+                        };
+                    };
+                    case null {};
+                };
+                return #Err(#NotAuthorized({ required_permission = ?NamePermissions.EDIT_ANY_NAME }));
             };
             
             let name_lower = Text.toLowercase(name);
@@ -84,7 +93,8 @@ module {
                 case (?existing_index) {
                     let target_index = dedup.getOrCreateIndexForPrincipal(principal);
                     if (existing_index != target_index) {
-                        return #err("Name already taken");
+                        let taken_by = dedup.getPrincipalForIndex(existing_index);
+                        return #Err(#NameAlreadyTaken({ name = name; taken_by = taken_by }));
                     };
                 };
                 case null {};
@@ -130,14 +140,14 @@ module {
             // Set new mappings
             Map.set(state.name_to_index, nat32Utils, index, name_record);
             Map.set(state.index_to_name, textUtils, name_lower, index);
-            return #ok(());
+            return #Ok(());
         };
 
         public func get_caller_name(caller : Principal) : ?T.Name {
             get_principal_name(caller);
         };
 
-        public func set_caller_name(caller : Principal, name : Text) : async* Result.Result<(), Text> {
+        public func set_caller_name(caller : Principal, name : Text) : async* T.NameResult<()> {
             await* set_principal_name(caller, caller, name);
         };
 
@@ -181,9 +191,10 @@ module {
                         case (#Allowed) { return #Allowed };
                         case (#Banned(reason)) { return #Banned(reason) };  // Banned users cannot proceed to fallback checks
                         case (#PermissionNotGranted) {};  // Continue to fallback checks
-                        case (#PermissionExpired(info)) {};  // Continue to fallback checks
-                        case (#PermissionTypeNotFound(info)) {};  // Continue to fallback checks
+                        case (#PermissionExpired(_)) {};  // Continue to fallback checks
+                        case (#PermissionTypeNotFound(_)) {};  // Continue to fallback checks
                         case (#NoPrincipalPermissions) {};  // Continue to fallback checks
+                        case (#PermissionTypeExists(_)) {};  // Continue to fallback checks
                     };
                 };
                 case null {};
@@ -216,9 +227,10 @@ module {
                         case (#Allowed) { return #Allowed };
                         case (#Banned(reason)) { return #Banned(reason) };  // Banned users cannot proceed to fallback checks
                         case (#PermissionNotGranted) {};  // Continue to fallback checks
-                        case (#PermissionExpired(info)) {};  // Continue to fallback checks
-                        case (#PermissionTypeNotFound(info)) {};  // Continue to fallback checks
+                        case (#PermissionExpired(_)) {};  // Continue to fallback checks
+                        case (#PermissionTypeNotFound(_)) {};  // Continue to fallback checks
                         case (#NoPrincipalPermissions) {};  // Continue to fallback checks
+                        case (#PermissionTypeExists(_)) {};  // Continue to fallback checks
                     };
                 };
                 case null {};
@@ -258,24 +270,27 @@ module {
             neuron_id : { id : Blob },
             name : Text,
             sns_governance : SnsPermissions.SnsGovernanceCanister
-        ) : async* Result.Result<(), Text> {
+        ) : async* T.NameResult<()> {
             // Check permissions
             switch (await* can_set_neuron_name(caller, neuron_id, sns_governance)) {
                 case (#Allowed) {};
                 case (#Banned(reason)) {
-                    return #err("Access denied: " # reason.reason);
+                    return #Err(#Banned({ reason = reason.reason; expires_at = null }));
                 };
                 case (#PermissionNotGranted) {
-                    return #err("Not authorized: caller must have set_sns_neuron_name permission or be a hotkey for this neuron");
+                    return #Err(#NotAuthorized({ required_permission = ?SET_SNS_NEURON_NAME_PERMISSION }));
                 };
                 case (#PermissionExpired(info)) {
-                    return #err("Permission expired at " # Nat64.toText(info.expired_at));
+                    return #Err(#PermissionExpired({ permission = SET_SNS_NEURON_NAME_PERMISSION; expired_at = info.expired_at }));
                 };
                 case (#PermissionTypeNotFound(info)) {
-                    return #err("Permission type not found: " # info.permission);
+                    return #Err(#PermissionNotFound({ permission = info.permission }));
                 };
                 case (#NoPrincipalPermissions) {
-                    return #err("No permissions found for caller");
+                    return #Err(#NotAuthorized({ required_permission = ?SET_SNS_NEURON_NAME_PERMISSION }));
+                };
+                case (#PermissionTypeExists(_)) {
+                    return #Err(#NotAuthorized({ required_permission = ?SET_SNS_NEURON_NAME_PERMISSION }));
                 };
             };
 
@@ -286,7 +301,7 @@ module {
                 case (?existing_index) {
                     let target_index = dedup.getOrCreateIndex(neuron_id.id);
                     if (existing_index != target_index) {
-                        return #err("Name already taken");
+                        return #Err(#NameAlreadyTaken({ name = name; taken_by = null }));
                     };
                 };
                 case null {};
@@ -330,7 +345,7 @@ module {
             // Set new mappings
             Map.set(state.name_to_index, nat32Utils, neuron_index, name_record);
             Map.set(state.index_to_name, textUtils, name_lower, neuron_index);
-            #ok(());
+            #Ok(());
         };
 
         public func get_sns_neuron_name(neuron_id : { id : Blob }) : ?T.Name {
@@ -342,24 +357,27 @@ module {
             caller : Principal,
             neuron_id : { id : Blob },
             sns_governance : SnsPermissions.SnsGovernanceCanister
-        ) : async* Result.Result<(), Text> {
+        ) : async* T.NameResult<()> {
             // Check permissions
             switch (await* can_set_neuron_name(caller, neuron_id, sns_governance)) {
                 case (#Allowed) {};
                 case (#Banned(reason)) {
-                    return #err("Access denied: " # reason.reason);
+                    return #Err(#Banned({ reason = reason.reason; expires_at = null }));
                 };
                 case (#PermissionNotGranted) {
-                    return #err("Not authorized: caller must have remove_sns_neuron_name permission or be a hotkey for this neuron");
+                    return #Err(#NotAuthorized({ required_permission = ?REMOVE_SNS_NEURON_NAME_PERMISSION }));
                 };
                 case (#PermissionExpired(info)) {
-                    return #err("Permission expired at " # Nat64.toText(info.expired_at));
+                    return #Err(#PermissionExpired({ permission = REMOVE_SNS_NEURON_NAME_PERMISSION; expired_at = info.expired_at }));
                 };
                 case (#PermissionTypeNotFound(info)) {
-                    return #err("Permission type not found: " # info.permission);
+                    return #Err(#PermissionNotFound({ permission = info.permission }));
                 };
                 case (#NoPrincipalPermissions) {
-                    return #err("No permissions found for caller");
+                    return #Err(#NotAuthorized({ required_permission = ?REMOVE_SNS_NEURON_NAME_PERMISSION }));
+                };
+                case (#PermissionTypeExists(_)) {
+                    return #Err(#NotAuthorized({ required_permission = ?REMOVE_SNS_NEURON_NAME_PERMISSION }));
                 };
             };
 
@@ -374,7 +392,7 @@ module {
             };
 
             Map.delete(state.name_to_index, nat32Utils, neuron_index);
-            #ok(());
+            #Ok(());
         };
     };
 }

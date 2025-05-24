@@ -19,8 +19,15 @@ module {
             ?(30 * 24 * 60 * 60 * 1_000_000_000)    // 30 days default
         );
         switch(ban_result) {
-            case (#err(e)) { return #err(e) };
-            case (#ok()) {};
+            case (#Err(e)) { 
+                switch (e) {
+                    case (#PermissionTypeExists(info)) { return #err("Permission type already exists: " # info.permission) };
+                    case (#NotAuthorized(info)) { return #err("Not authorized: " # info.required_permission) };
+                    case (#Banned(info)) { return #err("User is banned: " # info.reason) };
+                    case _ { return #err("Failed to add ban permission type") };
+                }
+            };
+            case (#Ok()) {};
         };
 
         // Add permission type for unbanning users
@@ -31,8 +38,15 @@ module {
             ?(30 * 24 * 60 * 60 * 1_000_000_000)    // 30 days default
         );
         switch(unban_result) {
-            case (#err(e)) { return #err(e) };
-            case (#ok()) {};
+            case (#Err(e)) { 
+                switch (e) {
+                    case (#PermissionTypeExists(info)) { return #err("Permission type already exists: " # info.permission) };
+                    case (#NotAuthorized(info)) { return #err("Not authorized: " # info.required_permission) };
+                    case (#Banned(info)) { return #err("User is banned: " # info.reason) };
+                    case _ { return #err("Failed to add unban permission type") };
+                }
+            };
+            case (#Ok()) {};
         };
 
         // Add permission type for managing ban settings
@@ -43,8 +57,15 @@ module {
             ?(30 * 24 * 60 * 60 * 1_000_000_000)    // 30 days default
         );
         switch(settings_result) {
-            case (#err(e)) { return #err(e) };
-            case (#ok()) {};
+            case (#Err(e)) { 
+                switch (e) {
+                    case (#PermissionTypeExists(info)) { return #err("Permission type already exists: " # info.permission) };
+                    case (#NotAuthorized(info)) { return #err("Not authorized: " # info.required_permission) };
+                    case (#Banned(info)) { return #err("User is banned: " # info.reason) };
+                    case _ { return #err("Failed to add manage ban settings permission type") };
+                }
+            };
+            case (#Ok()) {};
         };
 
         #ok(());
