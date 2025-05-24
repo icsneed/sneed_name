@@ -255,22 +255,13 @@ module {
             neuron_id : NeuronId,
             sns_governance : SnsGovernanceCanister
         ) : async Bool {
-            let neurons = await sns_governance.list_neurons(caller);
-            for (neuron in neurons.vals()) {
+            let reachable_neurons = await find_reachable_neurons(caller, sns_governance);
+            
+            for (neuron in reachable_neurons.vals()) {
                 switch (neuron.id) {
                     case (?id) {
                         if (Blob.equal(id.id, neuron_id.id)) {
-                            // Check if caller has permission in this neuron
-                            for (permission in neuron.permissions.vals()) {
-                                switch (permission.principal) {
-                                    case (?p) {
-                                        if (Principal.equal(p, caller)) {
-                                            return true;
-                                        };
-                                    };
-                                    case null {};
-                                };
-                            };
+                            return true;
                         };
                     };
                     case null {};
