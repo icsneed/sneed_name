@@ -171,9 +171,17 @@ module {
             sns_governance : Principal,
             permission : Text,
             settings : SnsPermissionSettings
-        ) : Result.Result<(), Text> {
+        ) : T.PermissionResult<()> {
             if (not state.permissions.is_admin(caller)) {
-                return #err("Not authorized");
+                if (state.permissions.is_banned(caller)) {
+                    switch (state.permissions.check_permission_detailed(caller, "dummy")) {
+                        case (#Banned(reason)) {
+                            return #Err(#Banned({ reason = reason.reason; expires_at = reason.expires_at }));
+                        };
+                        case _ {};
+                    };
+                };
+                return #Err(#NotAuthorized({ required_permission = "admin" }));
             };
 
             let sns_index = state.dedup.getOrCreateIndexForPrincipal(sns_governance);
@@ -201,7 +209,7 @@ module {
                 permission_index,
                 settings
             );
-            #ok(());
+            #Ok(());
         };
 
         // Get current settings for a permission
@@ -230,46 +238,16 @@ module {
             target : Principal,
             permission : Text,
             expires_at : ?Nat64
-        ) : Result.Result<(), Text> {
-            switch (state.permissions.grant_permission(caller, target, permission, expires_at)) {
-                case (#Ok()) { #ok(()) };
-                case (#Err(err)) {
-                    switch (err) {
-                        case (#NotAuthorized(info)) { #err("Not authorized: " # info.required_permission) };
-                        case (#Banned(info)) { #err("User is banned: " # info.reason) };
-                        case (#PermissionTypeNotFound(info)) { #err("Permission type not found: " # info.permission) };
-                        case (#ExpirationExceedsMaxDuration(_)) { #err("Expiration exceeds maximum duration") };
-                        case (#PermissionNotFound(info)) { #err("Permission not found: " # info.permission) };
-                        case (#PermissionTypeExists(info)) { #err("Permission type already exists: " # info.permission) };
-                        case (#PermissionExpired(_)) { #err("Permission expired") };
-                        case (#NoPrincipalPermissions(_)) { #err("No permissions for principal") };
-                        case (#InvalidPermissionType(info)) { #err("Invalid permission type: " # info.permission) };
-                    }
-                };
-            };
+        ) : T.PermissionResult<()> {
+            state.permissions.grant_permission(caller, target, permission, expires_at)
         };
 
         public func revoke_permission(
             caller : Principal,
             target : Principal,
             permission : Text
-        ) : Result.Result<(), Text> {
-            switch (state.permissions.revoke_permission(caller, target, permission)) {
-                case (#Ok()) { #ok(()) };
-                case (#Err(err)) {
-                    switch (err) {
-                        case (#NotAuthorized(info)) { #err("Not authorized: " # info.required_permission) };
-                        case (#Banned(info)) { #err("User is banned: " # info.reason) };
-                        case (#PermissionTypeNotFound(info)) { #err("Permission type not found: " # info.permission) };
-                        case (#ExpirationExceedsMaxDuration(_)) { #err("Expiration exceeds maximum duration") };
-                        case (#PermissionNotFound(info)) { #err("Permission not found: " # info.permission) };
-                        case (#PermissionTypeExists(info)) { #err("Permission type already exists: " # info.permission) };
-                        case (#PermissionExpired(_)) { #err("Permission expired") };
-                        case (#NoPrincipalPermissions(_)) { #err("No permissions for principal") };
-                        case (#InvalidPermissionType(info)) { #err("Invalid permission type: " # info.permission) };
-                    }
-                };
-            };
+        ) : T.PermissionResult<()> {
+            state.permissions.revoke_permission(caller, target, permission)
         };
 
         public func cleanup_expired() {

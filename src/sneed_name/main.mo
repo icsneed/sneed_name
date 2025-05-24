@@ -61,7 +61,7 @@ actor {
     min_voting_power : Nat64,
     max_duration : ?Nat64,
     default_duration : ?Nat64
-  ) : async Result.Result<(), Text> {
+  ) : async T.PermissionResult<()> {
     let settings : SnsPermissions.SnsPermissionSettings = {
       min_voting_power = min_voting_power;
       max_duration = max_duration;
@@ -131,9 +131,9 @@ actor {
 
   // add_permission_type should only be called internally by extending code.
   // Permission type management
-  //public shared ({ caller }) func add_permission_type(name : Text, description : Text, max_duration : ?Nat64, default_duration : ?Nat64) : async Result.Result<(), Text> {
+  //public shared ({ caller }) func add_permission_type(name : Text, description : Text, max_duration : ?Nat64, default_duration : ?Nat64) : async T.PermissionResult<()> {
   //  if (not permissions.is_admin(caller)) {
-  //    return #err("Not authorized");
+  //    return #Err(#NotAuthorized({ required_permission = "admin" }));
   //  };
   //  permissions.add_permission_type(name, description, max_duration, default_duration);
   //};
@@ -225,32 +225,32 @@ actor {
     permissions.unban_user(caller, user);
   };
 
-  public query func check_ban_status(user: Principal) : async Result.Result<Text, Text> {
+  public query func check_ban_status(user: Principal) : async T.BanResult<Text> {
     permissions.check_ban_status(user);
   };
 
-  public shared ({ caller }) func get_ban_log() : async Result.Result<[{
+  public shared ({ caller }) func get_ban_log() : async T.BanResult<[{
     user: Principal;
     admin: Principal;
     ban_timestamp: Int;
     expiry_timestamp: Int;
     reason: Text;
-  }], Text> {
+  }]> {
     permissions.get_ban_log(caller);
   };
 
-  public shared ({ caller }) func get_banned_users() : async Result.Result<[(Principal, Int)], Text> {
+  public shared ({ caller }) func get_banned_users() : async T.BanResult<[(Principal, Int)]> {
     permissions.get_banned_users(caller);
   };
 
   public shared ({ caller }) func get_user_ban_history(
     user: Principal
-  ) : async Result.Result<[{
+  ) : async T.BanResult<[{
     admin: Principal;
     ban_timestamp: Int;
     expiry_timestamp: Int;
     reason: Text;
-  }], Text> {
+  }]> {
     permissions.get_user_ban_history(caller, user);
   };
 
@@ -259,7 +259,7 @@ actor {
       min_ban_duration_hours: Nat;
       duration_settings: [Bans.BanDurationSetting];  // Use array instead of Vector
     }
-  ) : async Result.Result<(), Text> {
+  ) : async T.BanResult<()> {
     // Convert array to Vector for internal use
     let duration_settings = Vector.new<Bans.BanDurationSetting>();
     for (setting in settings.duration_settings.vals()) {
@@ -271,6 +271,6 @@ actor {
       duration_settings = duration_settings;
     };
     
-    permissions.update_ban_settings(caller, ban_settings)
+    permissions.update_ban_settings(caller, ban_settings);
   };
 };

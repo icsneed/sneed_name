@@ -10,6 +10,7 @@ import Nat64 "mo:base/Nat64";
 import Text "mo:base/Text";
 import Buffer "mo:base/Buffer";
 import Dedup "mo:dedup";
+import T "Types";
 
 module {
     public type BanLogEntry = {
@@ -119,19 +120,19 @@ module {
             user: Principal,
             duration_hours: ?Nat,
             reason: Text
-        ) : Result.Result<(), Text> {
+        ) : T.BanResult<()> {
             // Check permissions
             if (Principal.isAnonymous(caller)) {
-                return #err("Anonymous caller");
+                return #Err(#NotAuthorized({ required_permission = "ban_user" }));
             };
 
             if (not check_permission(caller, "ban_user")) {
-                return #err("Not authorized to ban users");
+                return #Err(#NotAuthorized({ required_permission = "ban_user" }));
             };
 
             // Cannot ban admins
             if (Principal.isController(user) or check_permission(user, "add_admin")) {
-                return #err("Cannot ban admins");
+                return #Err(#CannotBanAdmin({ principal = user }));
             };
 
             // Convert principals to indices
@@ -161,17 +162,17 @@ module {
             Vector.add(state.ban_log, entry);
             Map.set(state.banned_users, nat32Utils, user_index, expiry);
 
-            #ok(());
+            #Ok(());
         };
 
         // Auto-ban a user (system function)
-        public func auto_ban_user(user: Principal, reason: Text) : Result.Result<(), Text> {
+        public func auto_ban_user(user: Principal, reason: Text) : T.BanResult<()> {
             if (Principal.isAnonymous(user)) {
-                return #err("Cannot ban anonymous user");
+                return #Err(#CannotBanAdmin({ principal = user }));
             };
 
             if (Principal.isController(user) or check_permission(user, "add_admin")) {
-                return #err("Cannot ban admins");
+                return #Err(#CannotBanAdmin({ principal = user }));
             };
 
             let user_index = dedup.getOrCreateIndexForPrincipal(user);
@@ -192,18 +193,18 @@ module {
             Vector.add(state.ban_log, entry);
             Map.set(state.banned_users, nat32Utils, user_index, expiry);
 
-            #ok(());
+            #Ok(());
         };
 
         // Unban a user
-        public func unban_user(caller: Principal, user: Principal) : Result.Result<(), Text> {
+        public func unban_user(caller: Principal, user: Principal) : T.BanResult<()> {
             if (Principal.isAnonymous(caller)) {
-                return #err("Anonymous caller");
+                return #Err(#NotAuthorized({ required_permission = "unban_user" }));
             };
 
             // Check if caller is admin or has unban permission
             if (not check_permission(caller, "unban_user")) {
-                return #err("Not authorized to unban users");
+                return #Err(#NotAuthorized({ required_permission = "unban_user" }));
             };
 
             let user_index = dedup.getOrCreateIndexForPrincipal(user);
@@ -221,13 +222,13 @@ module {
             Vector.add(state.ban_log, entry);
             Map.delete(state.banned_users, nat32Utils, user_index);
 
-            #ok(());
+            #Ok(());
         };
 
         // Check ban status
-        public func check_ban_status(user: Principal) : Result.Result<Text, Text> {
+        public func check_ban_status(user: Principal) : T.BanResult<Text> {
             if (not is_banned(user)) {
-                return #err("User is not banned");
+                return #Err(#UserNotBanned({ principal = user }));
             };
 
             let user_index = dedup.getOrCreateIndexForPrincipal(user);
@@ -235,27 +236,27 @@ module {
                 case (?expiry) {
                     let remaining = expiry - Time.now();
                     let hours = remaining / (3600 * 1_000_000_000);
-                    #ok("User is banned for " # Int.toText(hours) # " more hours");
+                    #Ok("User is banned for " # Int.toText(hours) # " more hours");
                 };
                 case null {
-                    #err("User is not banned");
+                    #Err(#UserNotBanned({ principal = user }));
                 };
             }
         };
 
         // Get ban log with converted principals
-        public func get_ban_log(caller: Principal) : Result.Result<[{
+        public func get_ban_log(caller: Principal) : T.BanResult<[{
             user: Principal;
             admin: Principal;
             ban_timestamp: Int;
             expiry_timestamp: Int;
             reason: Text;
-        }], Text> {
+        }]> {
             if (not check_permission(caller, "manage_ban_settings")) {
-                return #err("Not authorized to view ban log");
+                return #Err(#NotAuthorized({ required_permission = "manage_ban_settings" }));
             };
 
-            #ok(get_ban_log_internal())
+            #Ok(get_ban_log_internal())
         };
 
         // Internal helper that actually gets the log
@@ -299,12 +300,12 @@ module {
         };
 
         // Get currently banned users
-        public func get_banned_users(caller: Principal) : Result.Result<[(Principal, Int)], Text> {
+        public func get_banned_users(caller: Principal) : T.BanResult<[(Principal, Int)]> {
             if (not check_permission(caller, "manage_ban_settings")) {
-                return #err("Not authorized to view banned users");
+                return #Err(#NotAuthorized({ required_permission = "manage_ban_settings" }));
             };
 
-            #ok(get_banned_users_internal())
+            #Ok(get_banned_users_internal())
         };
 
         // Internal helper that actually gets the banned users
@@ -328,17 +329,17 @@ module {
         public func get_user_ban_history(
             caller: Principal,
             user: Principal
-        ) : Result.Result<[{
+        ) : T.BanResult<[{
             admin: Principal;
             ban_timestamp: Int;
             expiry_timestamp: Int;
             reason: Text;
-        }], Text> {
+        }]> {
             if (not check_permission(caller, "manage_ban_settings")) {
-                return #err("Not authorized to view ban history");
+                return #Err(#NotAuthorized({ required_permission = "manage_ban_settings" }));
             };
 
-            #ok(get_user_ban_history_internal(user))
+            #Ok(get_user_ban_history_internal(user))
         };
 
         // Internal helper that actually gets the user history
@@ -380,15 +381,15 @@ module {
         public func update_ban_settings(
             caller: Principal,
             settings: BanSettings
-        ) : Result.Result<(), Text> {
+        ) : T.BanResult<()> {
             if (not check_permission(caller, "manage_ban_settings")) {
-                return #err("Not authorized to manage ban settings");
+                return #Err(#NotAuthorized({ required_permission = "manage_ban_settings" }));
             };
 
             // Validate settings
             let durations = Vector.toArray(settings.duration_settings);
             if (durations.size() == 0) {
-                return #err("Must provide at least one duration setting");
+                return #Err(#InvalidDurationSettings({ reason = "Must provide at least one duration setting" }));
             };
 
             // Verify durations increase with offense count
@@ -396,17 +397,17 @@ module {
             var last_duration = settings.min_ban_duration_hours;
             for (setting in durations.vals()) {
                 if (setting.offence_count <= last_count) {
-                    return #err("Offense counts must be strictly increasing");
+                    return #Err(#InvalidDurationSettings({ reason = "Offense counts must be strictly increasing" }));
                 };
                 if (setting.duration_hours < last_duration) {
-                    return #err("Durations must increase with offense count");
+                    return #Err(#InvalidDurationSettings({ reason = "Durations must increase with offense count" }));
                 };
                 last_count := setting.offence_count;
                 last_duration := setting.duration_hours;
             };
 
             state.settings := settings;
-            #ok(());
+            #Ok(());
         };
 
         // Cleanup expired bans

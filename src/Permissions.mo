@@ -277,14 +277,14 @@ module Permissions {
         name : Text,
         permission_type : PermissionType,
         state : PermissionState
-    ) : Result.Result<(), Text> {
+    ) : T.PermissionResult<()> {
         let name_index = text_to_index(name, state.dedup);
         // Check if permission type already exists
         switch (Map.get(state.permission_types, (func (n : Nat32) : Nat32 { n }, Nat32.equal), name_index)) {
-            case (?_) { #err("Permission type already exists") };
+            case (?_) { #Err(#PermissionTypeExists({ permission = name })) };
             case null {
                 Map.set(state.permission_types, (func (n : Nat32) : Nat32 { n }, Nat32.equal), name_index, permission_type);
-                #ok(());
+                #Ok(());
             };
         };
     };
@@ -295,16 +295,27 @@ module Permissions {
         permission : Text,
         expires_at : ?Nat64,
         state : PermissionState
-    ) : Result.Result<(), Text> {
+    ) : T.PermissionResult<()> {
         // Only admins can grant permissions
         if (not is_admin(caller, state)) {
-            return #err("Not authorized");
+            if (is_banned(caller, state)) {
+                let user_index = state.dedup.getOrCreateIndexForPrincipal(caller);
+                switch (Map.get(state.ban_state.banned_users, (func (n : Nat32) : Nat32 { n }, Nat32.equal), user_index)) {
+                    case (?expiry) {
+                        return #Err(#Banned({ reason = "User is currently banned"; expires_at = ?expiry }));
+                    };
+                    case null {
+                        return #Err(#Banned({ reason = "User is currently banned"; expires_at = null }));
+                    };
+                };
+            };
+            return #Err(#NotAuthorized({ required_permission = "admin" }));
         };
 
         let permission_index = text_to_index(permission, state.dedup);
         // Check if permission type exists and validate expiration
         switch (Map.get(state.permission_types, (func (n : Nat32) : Nat32 { n }, Nat32.equal), permission_index)) {
-            case null { return #err("Invalid permission type") };
+            case null { return #Err(#PermissionTypeNotFound({ permission = permission })) };
             case (?ptype) {
                 let now = Nat64.fromIntWrap(Time.now());
                 let effective_expiry = switch(expires_at) {
@@ -313,7 +324,8 @@ module Permissions {
                         switch(ptype.max_duration) {
                             case (?max) {
                                 if (exp > now + max) {
-                                    return #err("Expiration exceeds maximum allowed duration");
+                                    let requested = if (exp > now) { exp - now } else { 0 : Nat64 };
+                                    return #Err(#ExpirationExceedsMaxDuration({ max_duration = max; requested = requested }));
                                 };
                             };
                             case null {};
@@ -349,7 +361,7 @@ module Permissions {
 
                 // Grant permission
                 Map.set(perm_map, (func (n : Nat32) : Nat32 { n }, Nat32.equal), permission_index, metadata);
-                #ok(());
+                #Ok(());
             };
         };
     };
@@ -359,10 +371,21 @@ module Permissions {
         target : Principal,
         permission : Text,
         state : PermissionState
-    ) : Result.Result<(), Text> {
+    ) : T.PermissionResult<()> {
         // Only admins can revoke permissions
         if (not is_admin(caller, state)) {
-            return #err("Not authorized");
+            if (is_banned(caller, state)) {
+                let user_index = state.dedup.getOrCreateIndexForPrincipal(caller);
+                switch (Map.get(state.ban_state.banned_users, (func (n : Nat32) : Nat32 { n }, Nat32.equal), user_index)) {
+                    case (?expiry) {
+                        return #Err(#Banned({ reason = "User is currently banned"; expires_at = ?expiry }));
+                    };
+                    case null {
+                        return #Err(#Banned({ reason = "User is currently banned"; expires_at = null }));
+                    };
+                };
+            };
+            return #Err(#NotAuthorized({ required_permission = "admin" }));
         };
 
         let target_index = state.dedup.getOrCreateIndexForPrincipal(target);
@@ -370,9 +393,9 @@ module Permissions {
         switch (Map.get(state.principal_permissions, (func (n : Nat32) : Nat32 { n }, Nat32.equal), target_index)) {
             case (?perm_map) {
                 Map.delete(perm_map, (func (n : Nat32) : Nat32 { n }, Nat32.equal), permission_index);
-                #ok(());
+                #Ok(());
             };
-            case null { #err("Principal has no permissions") };
+            case null { #Err(#PermissionNotFound({ permission = permission; target = target })) };
         };
     };
 
@@ -551,9 +574,9 @@ module Permissions {
             }
         };
 
-        public func check_ban_status(user : Principal) : Result.Result<Text, Text> {
+        public func check_ban_status(user : Principal) : T.BanResult<Text> {
             if (not is_banned(user)) {
-                return #err("User is not banned");
+                return #Err(#UserNotBanned({ principal = user }));
             };
 
             let user_index = state.dedup.getOrCreateIndexForPrincipal(user);
@@ -561,25 +584,36 @@ module Permissions {
                 case (?expiry) {
                     let remaining = expiry - Time.now();
                     let hours = remaining / (3600 * 1_000_000_000);
-                    #ok("User is banned for " # Int.toText(hours) # " more hours");
+                    #Ok("User is banned for " # Int.toText(hours) # " more hours");
                 };
                 case null {
-                    #err("User is not banned");
+                    #Err(#UserNotBanned({ principal = user }));
                 };
             };
         };
 
         public func get_ban_log(
             caller : Principal
-        ) : Result.Result<[{
+        ) : T.BanResult<[{
             user : Principal;
             admin : Principal;
             ban_timestamp : Int;
             expiry_timestamp : Int;
             reason : Text;
-        }], Text> {
+        }]> {
             if (not check_permission(caller, MANAGE_BAN_SETTINGS)) {
-                return #err("Not authorized to view ban log");
+                if (is_banned(caller)) {
+                    let user_index = state.dedup.getOrCreateIndexForPrincipal(caller);
+                    switch (Map.get(state.ban_state.banned_users, nat32Utils, user_index)) {
+                        case (?expiry) {
+                            return #Err(#Banned({ reason = "User is currently banned"; expires_at = ?expiry }));
+                        };
+                        case null {
+                            return #Err(#Banned({ reason = "User is currently banned"; expires_at = null }));
+                        };
+                    };
+                };
+                return #Err(#NotAuthorized({ required_permission = MANAGE_BAN_SETTINGS }));
             };
 
             let log = Vector.toArray(state.ban_state.ban_log);
@@ -611,12 +645,23 @@ module Permissions {
                 };
             };
 
-            #ok(Buffer.toArray(result));
+            #Ok(Buffer.toArray(result));
         };
 
-        public func get_banned_users(caller : Principal) : Result.Result<[(Principal, Int)], Text> {
+        public func get_banned_users(caller : Principal) : T.BanResult<[(Principal, Int)]> {
             if (not check_permission(caller, MANAGE_BAN_SETTINGS)) {
-                return #err("Not authorized to view banned users");
+                if (is_banned(caller)) {
+                    let user_index = state.dedup.getOrCreateIndexForPrincipal(caller);
+                    switch (Map.get(state.ban_state.banned_users, nat32Utils, user_index)) {
+                        case (?expiry) {
+                            return #Err(#Banned({ reason = "User is currently banned"; expires_at = ?expiry }));
+                        };
+                        case null {
+                            return #Err(#Banned({ reason = "User is currently banned"; expires_at = null }));
+                        };
+                    };
+                };
+                return #Err(#NotAuthorized({ required_permission = MANAGE_BAN_SETTINGS }));
             };
 
             let entries = Map.entries(state.ban_state.banned_users);
@@ -631,20 +676,31 @@ module Permissions {
                 };
             };
 
-            #ok(Buffer.toArray(result));
+            #Ok(Buffer.toArray(result));
         };
 
         public func get_user_ban_history(
             caller : Principal,
             user : Principal
-        ) : Result.Result<[{
+        ) : T.BanResult<[{
             admin : Principal;
             ban_timestamp : Int;
             expiry_timestamp : Int;
             reason : Text;
-        }], Text> {
+        }]> {
             if (not check_permission(caller, MANAGE_BAN_SETTINGS)) {
-                return #err("Not authorized to view ban history");
+                if (is_banned(caller)) {
+                    let user_index = state.dedup.getOrCreateIndexForPrincipal(caller);
+                    switch (Map.get(state.ban_state.banned_users, nat32Utils, user_index)) {
+                        case (?expiry) {
+                            return #Err(#Banned({ reason = "User is currently banned"; expires_at = ?expiry }));
+                        };
+                        case null {
+                            return #Err(#Banned({ reason = "User is currently banned"; expires_at = null }));
+                        };
+                    };
+                };
+                return #Err(#NotAuthorized({ required_permission = MANAGE_BAN_SETTINGS }));
             };
 
             let user_index = state.dedup.getOrCreateIndexForPrincipal(user);
@@ -672,21 +728,32 @@ module Permissions {
                 };
             };
 
-            #ok(Buffer.toArray(result));
+            #Ok(Buffer.toArray(result));
         };
 
         public func update_ban_settings(
             caller : Principal,
             settings : BanSettings
-        ) : Result.Result<(), Text> {
+        ) : T.BanResult<()> {
             if (not check_permission(caller, MANAGE_BAN_SETTINGS)) {
-                return #err("Not authorized to manage ban settings");
+                if (is_banned(caller)) {
+                    let user_index = state.dedup.getOrCreateIndexForPrincipal(caller);
+                    switch (Map.get(state.ban_state.banned_users, nat32Utils, user_index)) {
+                        case (?expiry) {
+                            return #Err(#Banned({ reason = "User is currently banned"; expires_at = ?expiry }));
+                        };
+                        case null {
+                            return #Err(#Banned({ reason = "User is currently banned"; expires_at = null }));
+                        };
+                    };
+                };
+                return #Err(#NotAuthorized({ required_permission = MANAGE_BAN_SETTINGS }));
             };
 
             // Validate settings
             let durations = Vector.toArray(settings.duration_settings);
             if (durations.size() == 0) {
-                return #err("Must provide at least one duration setting");
+                return #Err(#InvalidDurationSettings({ reason = "Must provide at least one duration setting" }));
             };
 
             // Verify durations increase with offense count
@@ -694,17 +761,17 @@ module Permissions {
             var last_duration = settings.min_ban_duration_hours;
             for (setting in durations.vals()) {
                 if (setting.offence_count <= last_count) {
-                    return #err("Offense counts must be strictly increasing");
+                    return #Err(#InvalidDurationSettings({ reason = "Offense counts must be strictly increasing" }));
                 };
                 if (setting.duration_hours < last_duration) {
-                    return #err("Durations must increase with offense count");
+                    return #Err(#InvalidDurationSettings({ reason = "Durations must increase with offense count" }));
                 };
                 last_count := setting.offence_count;
                 last_duration := setting.duration_hours;
             };
 
             state.ban_state.settings := settings;
-            #ok(());
+            #Ok(());
         };
 
         public func cleanup_expired() {
@@ -790,10 +857,7 @@ module Permissions {
                 max_duration = max_duration;
                 default_duration = default_duration;
             };
-            switch (Permissions.add_permission_type(name, permission_type, state)) {
-                case (#ok()) { #Ok(()) };
-                case (#err(_)) { #Err(#PermissionTypeExists({ permission = name })) };
-            };
+            Permissions.add_permission_type(name, permission_type, state)
         };
 
         public func grant_permission(
@@ -802,32 +866,7 @@ module Permissions {
             permission : Text,
             expires_at : ?Nat64
         ) : T.PermissionResult<()> {
-            switch (Permissions.grant_permission(caller, target, permission, expires_at, state)) {
-                case (#ok()) { #Ok(()) };
-                case (#err(msg)) {
-                    if (Text.contains(msg, #text "Not authorized")) {
-                        if (is_banned(caller)) {
-                            let user_index = state.dedup.getOrCreateIndexForPrincipal(caller);
-                            switch (Map.get(state.ban_state.banned_users, nat32Utils, user_index)) {
-                                case (?expiry) {
-                                    #Err(#Banned({ reason = "User is currently banned"; expires_at = ?expiry }))
-                                };
-                                case null {
-                                    #Err(#Banned({ reason = "User is currently banned"; expires_at = null }))
-                                };
-                            };
-                        } else {
-                            #Err(#NotAuthorized({ required_permission = "admin" }))
-                        }
-                    } else if (Text.contains(msg, #text "Invalid permission type")) {
-                        #Err(#PermissionTypeNotFound({ permission = permission }))
-                    } else if (Text.contains(msg, #text "exceeds maximum")) {
-                        #Err(#ExpirationExceedsMaxDuration({ max_duration = 0; requested = 0 }))
-                    } else {
-                        #Err(#NotAuthorized({ required_permission = "admin" }))
-                    }
-                };
-            };
+            Permissions.grant_permission(caller, target, permission, expires_at, state)
         };
 
         public func revoke_permission(
@@ -835,30 +874,7 @@ module Permissions {
             target : Principal, 
             permission : Text
         ) : T.PermissionResult<()> {
-            switch (Permissions.revoke_permission(caller, target, permission, state)) {
-                case (#ok()) { #Ok(()) };
-                case (#err(msg)) {
-                    if (Text.contains(msg, #text "Not authorized")) {
-                        if (is_banned(caller)) {
-                            let user_index = state.dedup.getOrCreateIndexForPrincipal(caller);
-                            switch (Map.get(state.ban_state.banned_users, nat32Utils, user_index)) {
-                                case (?expiry) {
-                                    #Err(#Banned({ reason = "User is currently banned"; expires_at = ?expiry }))
-                                };
-                                case null {
-                                    #Err(#Banned({ reason = "User is currently banned"; expires_at = null }))
-                                };
-                            };
-                        } else {
-                            #Err(#NotAuthorized({ required_permission = "admin" }))
-                        }
-                    } else if (Text.contains(msg, #text "Permission not found")) {
-                        #Err(#PermissionNotFound({ permission = permission; target = target }))
-                    } else {
-                        #Err(#NotAuthorized({ required_permission = "admin" }))
-                    }
-                };
-            };
+            Permissions.revoke_permission(caller, target, permission, state)
         };
     };
 }
