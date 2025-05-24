@@ -7,6 +7,7 @@ import Principal "mo:base/Principal";
 import Result "mo:base/Result";
 import Time "mo:base/Time";
 import Nat64 "mo:base/Nat64";
+import Debug "mo:base/Debug";
 import Permissions "./Permissions";
 import NamePermissions "./sneed_name/NamePermissions";
 import SnsPermissions "./SnsPermissions";
@@ -17,6 +18,8 @@ module {
     public let REMOVE_SNS_NEURON_NAME_PERMISSION = "remove_sns_neuron_name";
     public let SET_SNS_PRINCIPAL_NAME_PERMISSION = "set_sns_principal_name";
     public let REMOVE_SNS_PRINCIPAL_NAME_PERMISSION = "remove_sns_principal_name";
+    public let VERIFY_SNS_NEURON_NAME_PERMISSION = "verify_sns_neuron_name";
+    public let UNVERIFY_SNS_NEURON_NAME_PERMISSION = "unverify_sns_neuron_name";
 
     public func empty_stable() : T.NameIndexState {
         {
@@ -628,6 +631,123 @@ module {
                 };
             };
         };
+
+        // SNS Neuron Name Verification methods
+        public func verify_sns_neuron_name(
+            caller : Principal,
+            neuron_id : { id : Blob },
+            sns_governance : SnsPermissions.SnsGovernanceCanister
+        ) : async* T.NameResult<()> {
+            // Check if caller has verification permission
+            let has_permission = switch (permissions) {
+                case (?p) {
+                    switch (p.check_permission_detailed(caller, VERIFY_SNS_NEURON_NAME_PERMISSION)) {
+                        case (#Allowed) { true };
+                        case (#Banned(reason)) {
+                            return #Err(#Banned({ reason = reason.reason; expires_at = reason.expires_at }));
+                        };
+                        case _ { false };
+                    };
+                };
+                case null { false };
+            };
+
+            // If no explicit permission, check if caller is SNS governance and neuron exists
+            if (not has_permission) {
+                let governance_principal = Principal.fromActor(sns_governance);
+                if (Principal.equal(caller, governance_principal)) {
+                    // Verify neuron exists in this SNS by calling get_neuron
+                    switch (await sns_governance.get_neuron(neuron_id)) {
+                        case (?_) {}; // Neuron exists, proceed
+                        case null {
+                            return #Err(#NeuronNotFound({ neuron_id = neuron_id.id }));
+                        };
+                    };
+                } else {
+                    return #Err(#NotAuthorized({ required_permission = ?VERIFY_SNS_NEURON_NAME_PERMISSION }));
+                };
+            };
+
+            let neuron_index = dedup.getOrCreateIndex(neuron_id.id);
+            
+            // Find the neuron name record
+            switch (Map.get(state.name_to_index, nat32Utils, neuron_index)) {
+                case (?existing_record) {
+                    let now = Nat64.fromIntWrap(Time.now());
+                    let updated_record = {
+                        name = existing_record.name;
+                        verified = true;
+                        created = existing_record.created;
+                        updated = now;
+                        created_by = existing_record.created_by;
+                        updated_by = caller;
+                    };
+                    Map.set(state.name_to_index, nat32Utils, neuron_index, updated_record);
+                    #Ok(());
+                };
+                case null {
+                    #Err(#NameNotFound({ name = "neuron:" # debug_show(neuron_id.id) }));
+                };
+            };
+        };
+
+        public func unverify_sns_neuron_name(
+            caller : Principal,
+            neuron_id : { id : Blob },
+            sns_governance : SnsPermissions.SnsGovernanceCanister
+        ) : async* T.NameResult<()> {
+            // Check if caller has unverification permission
+            let has_permission = switch (permissions) {
+                case (?p) {
+                    switch (p.check_permission_detailed(caller, UNVERIFY_SNS_NEURON_NAME_PERMISSION)) {
+                        case (#Allowed) { true };
+                        case (#Banned(reason)) {
+                            return #Err(#Banned({ reason = reason.reason; expires_at = reason.expires_at }));
+                        };
+                        case _ { false };
+                    };
+                };
+                case null { false };
+            };
+
+            // If no explicit permission, check if caller is SNS governance and neuron exists
+            if (not has_permission) {
+                let governance_principal = Principal.fromActor(sns_governance);
+                if (Principal.equal(caller, governance_principal)) {
+                    // Verify neuron exists in this SNS by calling get_neuron
+                    switch (await sns_governance.get_neuron(neuron_id)) {
+                        case (?_) {}; // Neuron exists, proceed
+                        case null {
+                            return #Err(#NeuronNotFound({ neuron_id = neuron_id.id }));
+                        };
+                    };
+                } else {
+                    return #Err(#NotAuthorized({ required_permission = ?UNVERIFY_SNS_NEURON_NAME_PERMISSION }));
+                };
+            };
+
+            let neuron_index = dedup.getOrCreateIndex(neuron_id.id);
+            
+            // Find the neuron name record
+            switch (Map.get(state.name_to_index, nat32Utils, neuron_index)) {
+                case (?existing_record) {
+                    let now = Nat64.fromIntWrap(Time.now());
+                    let updated_record = {
+                        name = existing_record.name;
+                        verified = false;
+                        created = existing_record.created;
+                        updated = now;
+                        created_by = existing_record.created_by;
+                        updated_by = caller;
+                    };
+                    Map.set(state.name_to_index, nat32Utils, neuron_index, updated_record);
+                    #Ok(());
+                };
+                case null {
+                    #Err(#NameNotFound({ name = "neuron:" # debug_show(neuron_id.id) }));
+                };
+            };
+        };
     };
 
     // Function to add SNS permission types
@@ -678,6 +798,30 @@ module {
             ?(30 * 24 * 60 * 60 * 1_000_000_000)    // 30 days default
         );
         switch(remove_principal_result) {
+            case (#Err(e)) { return #Err(e) };
+            case (#Ok()) {};
+        };
+
+        // Add permission type for verifying SNS neuron names
+        let verify_neuron_result = permissions.add_permission_type(
+            VERIFY_SNS_NEURON_NAME_PERMISSION,
+            "Permission to verify SNS neuron names",
+            ?(365 * 24 * 60 * 60 * 1_000_000_000),  // 1 year max
+            ?(30 * 24 * 60 * 60 * 1_000_000_000)    // 30 days default
+        );
+        switch(verify_neuron_result) {
+            case (#Err(e)) { return #Err(e) };
+            case (#Ok()) {};
+        };
+
+        // Add permission type for unverifying SNS neuron names
+        let unverify_neuron_result = permissions.add_permission_type(
+            UNVERIFY_SNS_NEURON_NAME_PERMISSION,
+            "Permission to unverify SNS neuron names",
+            ?(365 * 24 * 60 * 60 * 1_000_000_000),  // 1 year max
+            ?(30 * 24 * 60 * 60 * 1_000_000_000)    // 30 days default
+        );
+        switch(unverify_neuron_result) {
             case (#Err(e)) { return #Err(e) };
             case (#Ok()) {};
         };

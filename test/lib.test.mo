@@ -43,6 +43,34 @@ actor class MockSnsGovernance() {
         };
         [neuron1]
     };
+
+    public shared query func get_neuron(neuron_id : SnsPermissions.NeuronId) : async ?SnsPermissions.Neuron {
+        // Return the test neuron if it matches neuron1
+        if (neuron_id.id == Text.encodeUtf8("neuron1")) {
+            ?{
+                id = ?neuron_id;
+                permissions = [{
+                    principal = null;  // Generic neuron for testing
+                    permission_type = [1, 2, 3];
+                }];
+                cached_neuron_stake_e8s = 100_000_000;
+                voting_power_percentage_multiplier = 100;
+                staked_maturity_e8s_equivalent = null;
+                maturity_e8s_equivalent = 0;
+                created_timestamp_seconds = 0;
+                source_nns_neuron_id = null;
+                auto_stake_maturity = null;
+                aging_since_timestamp_seconds = 0;
+                dissolve_state = null;
+                vesting_period_seconds = null;
+                disburse_maturity_in_progress = [];
+                followees = [];
+                neuron_fees_e8s = 0;
+            }
+        } else {
+            null  // Neuron not found
+        }
+    };
 };
 
 // Test static methods
@@ -517,6 +545,80 @@ do {
                 assert(name.name == "governance-principal");
                 assert(name.created_by == governance_principal);
             };
+        };
+
+        // Test SNS neuron name verification
+        // First verify that the neuron name starts unverified
+        switch(name_index.get_sns_neuron_name(test_neuron_id)) {
+            case null { Debug.trap("Neuron name not found for verification test") };
+            case (?name) {
+                assert(name.verified == false);
+            };
+        };
+
+        // Test that governance canister can verify its own neuron names
+        switch(await* name_index.verify_sns_neuron_name(
+            governance_principal,
+            test_neuron_id,
+            mock_governance
+        )) {
+            case (#Err(e)) { Debug.trap("Governance canister failed to verify neuron name: " # debug_show(e)) };
+            case (#Ok()) {};
+        };
+
+        // Verify the neuron name is now verified
+        switch(name_index.get_sns_neuron_name(test_neuron_id)) {
+            case null { Debug.trap("Neuron name not found after verification") };
+            case (?name) {
+                assert(name.verified == true);
+                assert(name.updated_by == governance_principal);
+            };
+        };
+
+        // Test that governance canister can unverify its own neuron names
+        switch(await* name_index.unverify_sns_neuron_name(
+            governance_principal,
+            test_neuron_id,
+            mock_governance
+        )) {
+            case (#Err(e)) { Debug.trap("Governance canister failed to unverify neuron name: " # debug_show(e)) };
+            case (#Ok()) {};
+        };
+
+        // Verify the neuron name is now unverified
+        switch(name_index.get_sns_neuron_name(test_neuron_id)) {
+            case null { Debug.trap("Neuron name not found after unverification") };
+            case (?name) {
+                assert(name.verified == false);
+                assert(name.updated_by == governance_principal);
+            };
+        };
+
+        // Test that non-governance principals cannot verify neuron names without permission
+        switch(await* name_index.verify_sns_neuron_name(
+            user1,
+            test_neuron_id,
+            mock_governance
+        )) {
+            case (#Err(#NotAuthorized(info))) { 
+                assert(info.required_permission == ?Lib.VERIFY_SNS_NEURON_NAME_PERMISSION);
+            };
+            case (#Err(e)) { Debug.trap("Expected NotAuthorized error, got: " # debug_show(e)) };
+            case (#Ok()) { Debug.trap("Non-governance user should not be able to verify neuron names without permission") };
+        };
+
+        // Test verification of non-existent neuron
+        let fake_neuron_id = { id = Text.encodeUtf8("fake_neuron") };
+        switch(await* name_index.verify_sns_neuron_name(
+            governance_principal,
+            fake_neuron_id,
+            mock_governance
+        )) {
+            case (#Err(#NeuronNotFound(info))) { 
+                assert(info.neuron_id == fake_neuron_id.id);
+            };
+            case (#Err(e)) { Debug.trap("Expected NeuronNotFound error, got: " # debug_show(e)) };
+            case (#Ok()) { Debug.trap("Should not be able to verify non-existent neuron") };
         };
 
         Debug.print("✓ SNS permissions tests passed");

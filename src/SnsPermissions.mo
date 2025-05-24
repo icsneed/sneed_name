@@ -97,6 +97,7 @@ module {
 
     public type SnsGovernanceCanister = actor {
         list_neurons : shared query (caller : Principal) -> async [Neuron];
+        get_neuron : shared query (neuron_id : NeuronId) -> async ?Neuron;
     };
 
     // Helper function to convert text to index
