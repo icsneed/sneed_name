@@ -78,7 +78,6 @@ module Permissions {
         var permission_types : Map.Map<Nat32, PermissionType>;  // Permission index -> Type info
         dedup : Dedup.Dedup;  // For principal -> index and text -> index conversion
         ban_state : BanState;  // Ban system state
-        ban_checker : Principal -> Bool;  // Function to check if a principal is banned
     };
 
     // Built-in permission type keys
@@ -113,7 +112,6 @@ module Permissions {
                     duration_settings = default_settings;
                 };
             };
-            ban_checker = func(_ : Principal) : Bool { false };
         };
     };
 
@@ -136,7 +134,7 @@ module Permissions {
         };
     };
 
-    public func from_dedup(dedup : Dedup.Dedup, ban_checker : Principal -> Bool) : PermissionState {
+    public func from_dedup(dedup : Dedup.Dedup) : PermissionState {
         let default_settings = Vector.new<BanDurationSetting>();
         for (setting in DEFAULT_DURATIONS.vals()) {
             Vector.add(default_settings, setting);
@@ -154,18 +152,16 @@ module Permissions {
                     duration_settings = default_settings;
                 };
             };
-            ban_checker = ban_checker;
         };
     };
 
-    public func from_stable(stable_state : StablePermissionState, dedup : Dedup.Dedup, ban_checker : Principal -> Bool) : PermissionState {
+    public func from_stable(stable_state : StablePermissionState, dedup : Dedup.Dedup) : PermissionState {
         {
             admins = stable_state.admins;
             principal_permissions = stable_state.principal_permissions;
             var permission_types = Map.new<Nat32, PermissionType>();
             dedup = dedup;
             ban_state = stable_state.ban_state;
-            ban_checker = ban_checker;
         };
     };
 
@@ -203,8 +199,14 @@ module Permissions {
 
     public func check_permission(principal : Principal, permission : Text, state : PermissionState) : Bool {
         // Check if user is banned
-        if (state.ban_checker(principal)) {
-            return false;
+        let user_index = state.dedup.getOrCreateIndexForPrincipal(principal);
+        switch (Map.get(state.ban_state.banned_users, (func (n : Nat32) : Nat32 { n }, Nat32.equal), user_index)) {
+            case (?expiry) {
+                if (expiry > Time.now()) {
+                    return false;
+                };
+            };
+            case null {};
         };
 
         // Admins have all permissions

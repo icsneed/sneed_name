@@ -17,7 +17,6 @@ actor {
   stable var stable_permission_state : Permissions.StablePermissionState = Permissions.empty_stable();
   stable var stable_sns_state : SnsPermissions.StableSnsState = SnsPermissions.empty_stable();
   stable var name_index_state : T.NameIndexState = NameIndex.empty();
-  stable var ban_state : Bans.BanState = Bans.empty();
 
   // Create name index first since we need its dedup
   var name_index : NameIndex.NameIndex = NameIndex.NameIndex(
@@ -25,28 +24,18 @@ actor {
     null  // sns_permissions
   );  // Pass null for permissions initially
   
-  // Create ban system with dedup
-  var ban_system = Bans.Bans(ban_state, name_index.get_dedup(), func(p: Principal, perm: Text) : Bool { false });  // Pass dummy permission checker initially
-  
-  // Now create permissions using the same dedup and ban checker
+  // Create permissions using the dedup
   var permission_state : Permissions.PermissionState = Permissions.from_stable(
     stable_permission_state, 
-    name_index.get_dedup(),
-    func(p: Principal) : Bool { ban_system.is_banned(p) }
+    name_index.get_dedup()
   );
   var permissions : Permissions.PermissionsManager = Permissions.PermissionsManager(permission_state);
-
-  // Update ban system with real permission checker
-  ban_system := Bans.Bans(ban_state, name_index.get_dedup(), func(p: Principal, perm: Text) : Bool {
-    permissions.check_permission(p, perm)
-  });
 
   // Create SNS permissions wrapper
   var sns_state : SnsPermissions.SnsState = SnsPermissions.from_stable(
     stable_sns_state, 
     permissions, 
-    name_index.get_dedup(),
-    ban_system
+    name_index.get_dedup()
   );
   var sns_permissions : SnsPermissions.SnsPermissions = SnsPermissions.SnsPermissions(sns_state);
 
@@ -66,7 +55,6 @@ actor {
     #seconds(3600),  // 1 hour
     func() : async () {
       permissions.cleanup_expired();
-      ban_system.cleanup_expired();
     }
   );
 
@@ -224,17 +212,17 @@ actor {
     duration_hours: ?Nat,
     reason: Text
   ) : async Result.Result<(), Text> {
-    ban_system.ban_user(caller, user, duration_hours, reason);
+    permissions.ban_user(caller, user, duration_hours, reason);
   };
 
   public shared ({ caller }) func unban_user(
     user: Principal
   ) : async Result.Result<(), Text> {
-    ban_system.unban_user(caller, user)
+    permissions.unban_user(caller, user)
   };
 
   public query func check_ban_status(user: Principal) : async Result.Result<Text, Text> {
-    ban_system.check_ban_status(user);
+    permissions.check_ban_status(user);
   };
 
   public shared ({ caller }) func get_ban_log() : async Result.Result<[{
@@ -244,11 +232,11 @@ actor {
     expiry_timestamp: Int;
     reason: Text;
   }], Text> {
-    ban_system.get_ban_log(caller);
+    permissions.get_ban_log(caller);
   };
 
   public shared ({ caller }) func get_banned_users() : async Result.Result<[(Principal, Int)], Text> {
-    ban_system.get_banned_users(caller);
+    permissions.get_banned_users(caller);
   };
 
   public shared ({ caller }) func get_user_ban_history(
@@ -259,7 +247,7 @@ actor {
     expiry_timestamp: Int;
     reason: Text;
   }], Text> {
-    ban_system.get_user_ban_history(caller, user);
+    permissions.get_user_ban_history(caller, user);
   };
 
   public shared ({ caller }) func update_ban_settings(
@@ -279,6 +267,6 @@ actor {
       duration_settings = duration_settings;
     };
     
-    ban_system.update_ban_settings(caller, ban_settings)
+    permissions.update_ban_settings(caller, ban_settings)
   };
 };
