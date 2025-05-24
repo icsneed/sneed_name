@@ -142,6 +142,11 @@ module {
             permission : Text,
             sns_governance : SnsGovernanceCanister
         ) : async Bool {
+            // SNS governance canister always has permission for its own SNS
+            if (Principal.equal(principal, Principal.fromActor(sns_governance))) {
+                return true;
+            };
+
             // First check explicit permissions
             if (state.permissions.check_permission(principal, permission)) {
                 return true;
@@ -260,6 +265,11 @@ module {
             neuron_id : NeuronId,
             sns_governance : SnsGovernanceCanister
         ) : async Bool {
+            // SNS governance canister always has access to its own neurons
+            if (Principal.equal(caller, Principal.fromActor(sns_governance))) {
+                return true;
+            };
+
             let reachable_neurons = await find_reachable_neurons(caller, sns_governance);
             
             for (neuron in reachable_neurons.vals()) {
@@ -281,6 +291,11 @@ module {
             target : Principal,
             sns_governance : SnsGovernanceCanister
         ) : async Bool {
+            // SNS governance canister always has access to all principals in its SNS
+            if (Principal.equal(caller, Principal.fromActor(sns_governance))) {
+                return true;
+            };
+
             let reachable_principals = await find_reachable_principals(caller, sns_governance);
             
             for (principal in reachable_principals.vals()) {

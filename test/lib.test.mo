@@ -476,6 +476,49 @@ do {
             case (?name) { Debug.trap("Principal name should have been removed") };
         };
 
+        // Test that SNS governance canister itself has access to its own SNS methods
+        let governance_principal = Principal.fromActor(mock_governance);
+        
+        // Test governance canister setting neuron name
+        switch(await* name_index.set_sns_neuron_name(
+            governance_principal,
+            test_neuron_id,
+            "governance-neuron",
+            mock_governance
+        )) {
+            case (#Err(e)) { Debug.trap("Governance canister failed to set neuron name: " # debug_show(e)) };
+            case (#Ok()) {};
+        };
+
+        // Verify governance neuron name was set
+        switch(name_index.get_sns_neuron_name(test_neuron_id)) {
+            case null { Debug.trap("Governance neuron name not found") };
+            case (?name) {
+                assert(name.name == "governance-neuron");
+                assert(name.created_by == governance_principal);
+            };
+        };
+
+        // Test governance canister setting principal name
+        switch(await* name_index.set_sns_principal_name(
+            governance_principal,
+            user2,
+            "governance-principal",
+            mock_governance
+        )) {
+            case (#Err(e)) { Debug.trap("Governance canister failed to set principal name: " # debug_show(e)) };
+            case (#Ok()) {};
+        };
+
+        // Verify governance principal name was set
+        switch(name_index.get_principal_name(user2)) {
+            case null { Debug.trap("Governance principal name not found") };
+            case (?name) {
+                assert(name.name == "governance-principal");
+                assert(name.created_by == governance_principal);
+            };
+        };
+
         Debug.print("✓ SNS permissions tests passed");
     };
 
