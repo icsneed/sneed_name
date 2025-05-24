@@ -109,10 +109,11 @@ module {
             // Get existing record if any
             let name_record = switch (Map.get(state.name_to_index, nat32Utils, index)) {
                 case (?existing) {
-                    // Keep original creation info, update the rest
+                    // If the name is changing, unverify it
+                    let should_unverify = existing.name != name;
                     {
                         name = name;
-                        verified = existing.verified;
+                        verified = if (should_unverify) { false } else { existing.verified };
                         created = existing.created;
                         updated = now;
                         created_by = existing.created_by;
@@ -316,9 +317,11 @@ module {
             // Create or update name record
             let name_record = switch (Map.get(state.name_to_index, nat32Utils, neuron_index)) {
                 case (?existing) {
+                    // If the name is changing, unverify it
+                    let should_unverify = existing.name != name;
                     {
                         name = name;
-                        verified = existing.verified;  // Preserve verified status
+                        verified = if (should_unverify) { false } else { existing.verified };
                         created = existing.created;
                         updated = now;
                         created_by = existing.created_by;
@@ -396,6 +399,105 @@ module {
 
             Map.delete(state.name_to_index, nat32Utils, neuron_index);
             #Ok(());
+        };
+
+        // Verification methods
+        public func verify_name(caller : Principal, target_name : Text) : async* T.NameResult<()> {
+            // Check if caller has verification permission
+            switch (permissions) {
+                case (?p) {
+                    switch (p.check_permission_detailed(caller, NamePermissions.VERIFY_NAME)) {
+                        case (#Allowed) {};
+                        case (#Banned(reason)) {
+                            return #Err(#Banned({ reason = reason.reason; expires_at = reason.expires_at }));
+                        };
+                        case _ {
+                            return #Err(#NotAuthorized({ required_permission = ?NamePermissions.VERIFY_NAME }));
+                        };
+                    };
+                };
+                case null {
+                    return #Err(#NotAuthorized({ required_permission = ?NamePermissions.VERIFY_NAME }));
+                };
+            };
+
+            let name_lower = Text.toLowercase(target_name);
+            
+            // Find the name record
+            switch (Map.get(state.index_to_name, textUtils, name_lower)) {
+                case (?index) {
+                    switch (Map.get(state.name_to_index, nat32Utils, index)) {
+                        case (?existing_record) {
+                            let now = Nat64.fromIntWrap(Time.now());
+                            let updated_record = {
+                                name = existing_record.name;
+                                verified = true;
+                                created = existing_record.created;
+                                updated = now;
+                                created_by = existing_record.created_by;
+                                updated_by = caller;
+                            };
+                            Map.set(state.name_to_index, nat32Utils, index, updated_record);
+                            #Ok(());
+                        };
+                        case null {
+                            #Err(#NameNotFound({ name = target_name }));
+                        };
+                    };
+                };
+                case null {
+                    #Err(#NameNotFound({ name = target_name }));
+                };
+            };
+        };
+
+        public func unverify_name(caller : Principal, target_name : Text) : async* T.NameResult<()> {
+            // Check if caller has unverification permission
+            switch (permissions) {
+                case (?p) {
+                    switch (p.check_permission_detailed(caller, NamePermissions.UNVERIFY_NAME)) {
+                        case (#Allowed) {};
+                        case (#Banned(reason)) {
+                            return #Err(#Banned({ reason = reason.reason; expires_at = reason.expires_at }));
+                        };
+                        case _ {
+                            return #Err(#NotAuthorized({ required_permission = ?NamePermissions.UNVERIFY_NAME }));
+                        };
+                    };
+                };
+                case null {
+                    return #Err(#NotAuthorized({ required_permission = ?NamePermissions.UNVERIFY_NAME }));
+                };
+            };
+
+            let name_lower = Text.toLowercase(target_name);
+            
+            // Find the name record
+            switch (Map.get(state.index_to_name, textUtils, name_lower)) {
+                case (?index) {
+                    switch (Map.get(state.name_to_index, nat32Utils, index)) {
+                        case (?existing_record) {
+                            let now = Nat64.fromIntWrap(Time.now());
+                            let updated_record = {
+                                name = existing_record.name;
+                                verified = false;
+                                created = existing_record.created;
+                                updated = now;
+                                created_by = existing_record.created_by;
+                                updated_by = caller;
+                            };
+                            Map.set(state.name_to_index, nat32Utils, index, updated_record);
+                            #Ok(());
+                        };
+                        case null {
+                            #Err(#NameNotFound({ name = target_name }));
+                        };
+                    };
+                };
+                case null {
+                    #Err(#NameNotFound({ name = target_name }));
+                };
+            };
         };
     };
 }

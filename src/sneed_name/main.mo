@@ -200,6 +200,15 @@ actor {
     await* name_index.remove_sns_neuron_name(caller, neuron_id, governance_canister);
   };
 
+  // Name Verification Management
+  public shared ({ caller }) func verify_name(name : Text) : async T.NameResult<()> {
+    await* name_index.verify_name(caller, name);
+  };
+
+  public shared ({ caller }) func unverify_name(name : Text) : async T.NameResult<()> {
+    await* name_index.unverify_name(caller, name);
+  };
+
   // Ban Management
   public shared ({ caller }) func ban_user(
     user: Principal,

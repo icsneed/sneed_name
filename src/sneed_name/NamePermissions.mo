@@ -7,6 +7,7 @@ module NamePermissions {
     // Permission type keys
     public let EDIT_ANY_NAME = "edit_any_name";  // Can edit anyone's name
     public let VERIFY_NAME = "verify_name";      // Can mark names as verified
+    public let UNVERIFY_NAME = "unverify_name";  // Can remove verification from names
 
     public func add_name_permissions(
         permissions : Permissions.PermissionsManager
@@ -31,6 +32,18 @@ module NamePermissions {
             ?(30 * 24 * 60 * 60 * 1_000_000_000)    // 30 days default
         );
         switch(verify_result) {
+            case (#Err(e)) { return #Err(e) };
+            case (#Ok()) {};
+        };
+
+        // Add permission type for unverifying names
+        let unverify_result = permissions.add_permission_type(
+            UNVERIFY_NAME,
+            "Permission to remove verification from user names",
+            ?(365 * 24 * 60 * 60 * 1_000_000_000),  // 1 year max
+            ?(30 * 24 * 60 * 60 * 1_000_000_000)    // 30 days default
+        );
+        switch(unverify_result) {
             case (#Err(e)) { return #Err(e) };
             case (#Ok()) {};
         };
