@@ -56,17 +56,7 @@ module {
             if (Principal.isAnonymous(caller)) {
                 return #err("Anonymous caller");
             };
-            
-            // First check if user is banned
-            switch (permissions) {
-                case (?p) {
-                    if (p.is_banned(caller)) {
-                        return #err("Caller is banned");
-                    };
-                };
-                case null {};
-            };
-            
+
             // Then check permissions
             let has_permission = switch (permissions) {
                 case (?p) {
