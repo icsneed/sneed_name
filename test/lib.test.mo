@@ -410,7 +410,7 @@ do {
         // Create mock SNS governance canister
         let mock_governance = await MockSnsGovernance();
 
-        // Set up name index
+        // Set up name index with permissions
         let name_state = Lib.empty_stable();
         let name_index = Lib.NameIndex(name_state, ?sns_permissions);
 
@@ -1169,7 +1169,7 @@ do {
         let other_account : T.Account = { owner = user2; subaccount = ?subaccount_blob };
         switch(await* name_index.set_account_name(user1, other_account, "unauthorized")) {
             case (#Err(#NotAuthorized(info))) { 
-                assert(info.required_permission == ?Lib.SET_ACCOUNT_NAME_PERMISSION);
+                assert(info.required_permission == ?NamePermissions.SET_ACCOUNT_NAME_PERMISSION);
             };
             case (#Err(e)) { Debug.trap("Expected NotAuthorized error, got: " # debug_show(e)) };
             case (#Ok()) { Debug.trap("Non-owner should not be able to set account names") };
@@ -1203,17 +1203,22 @@ do {
             case (#Ok()) {};
         };
 
-        // Set up name index
+        // Set up name index with permissions
+        let sns_state = SnsPermissions.from_stable(
+            SnsPermissions.empty_stable(),
+            permissions
+        );
+        let sns_permissions = SnsPermissions.SnsPermissions(sns_state);
         let name_state = Lib.empty_stable();
-        let name_index = Lib.NameIndex(name_state, null);
+        let name_index = Lib.NameIndex(name_state, ?sns_permissions);
 
         // Grant banned word management permissions to admin1
-        switch(permissions.grant_permission(admin1, admin1, Lib.ADD_BANNED_WORD_PERMISSION, null)) {
+        switch(permissions.grant_permission(admin1, admin1, NamePermissions.ADD_BANNED_WORD_PERMISSION, null)) {
             case (#Err(e)) { Debug.trap("Failed to grant add banned word permission: " # debug_show(e)) };
             case (#Ok()) {};
         };
 
-        switch(permissions.grant_permission(admin1, admin1, Lib.REMOVE_BANNED_WORD_PERMISSION, null)) {
+        switch(permissions.grant_permission(admin1, admin1, NamePermissions.REMOVE_BANNED_WORD_PERMISSION, null)) {
             case (#Err(e)) { Debug.trap("Failed to grant remove banned word permission: " # debug_show(e)) };
             case (#Ok()) {};
         };
@@ -1277,7 +1282,7 @@ do {
         // Test that non-authorized users cannot manage banned words
         switch(await* name_index.add_banned_word(user1, "newbadword")) {
             case (#Err(#NotAuthorized(info))) { 
-                assert(info.required_permission == ?Lib.ADD_BANNED_WORD_PERMISSION);
+                assert(info.required_permission == ?NamePermissions.ADD_BANNED_WORD_PERMISSION);
             };
             case (#Err(e)) { Debug.trap("Expected NotAuthorized error, got: " # debug_show(e)) };
             case (#Ok()) { Debug.trap("Non-authorized user should not be able to add banned words") };
@@ -1285,7 +1290,7 @@ do {
 
         switch(await* name_index.remove_banned_word(user1, "spam")) {
             case (#Err(#NotAuthorized(info))) { 
-                assert(info.required_permission == ?Lib.REMOVE_BANNED_WORD_PERMISSION);
+                assert(info.required_permission == ?NamePermissions.REMOVE_BANNED_WORD_PERMISSION);
             };
             case (#Err(e)) { Debug.trap("Expected NotAuthorized error, got: " # debug_show(e)) };
             case (#Ok()) { Debug.trap("Non-authorized user should not be able to remove banned words") };
