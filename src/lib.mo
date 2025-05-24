@@ -78,6 +78,8 @@ module {
                 switch (permissions) {
                     case (?p) {
                         if (p.is_banned(caller)) {
+                            let user_index = p.get_dedup().getOrCreateIndexForPrincipal(caller);
+                            // We need to access the ban state to get expiry time
                             return #Err(#Banned({ reason = "User is currently banned"; expires_at = null }));
                         };
                     };
@@ -275,7 +277,7 @@ module {
             switch (await* can_set_neuron_name(caller, neuron_id, sns_governance)) {
                 case (#Allowed) {};
                 case (#Banned(reason)) {
-                    return #Err(#Banned({ reason = reason.reason; expires_at = null }));
+                    return #Err(#Banned({ reason = reason.reason; expires_at = reason.expires_at }));
                 };
                 case (#PermissionNotGranted) {
                     return #Err(#NotAuthorized({ required_permission = ?SET_SNS_NEURON_NAME_PERMISSION }));
@@ -362,7 +364,7 @@ module {
             switch (await* can_set_neuron_name(caller, neuron_id, sns_governance)) {
                 case (#Allowed) {};
                 case (#Banned(reason)) {
-                    return #Err(#Banned({ reason = reason.reason; expires_at = null }));
+                    return #Err(#Banned({ reason = reason.reason; expires_at = reason.expires_at }));
                 };
                 case (#PermissionNotGranted) {
                     return #Err(#NotAuthorized({ required_permission = ?REMOVE_SNS_NEURON_NAME_PERMISSION }));

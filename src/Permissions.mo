@@ -18,7 +18,7 @@ module Permissions {
     // Permission check result type
     public type PermissionResult = {
         #Allowed;
-        #Banned : { reason : Text };
+        #Banned : { reason : Text; expires_at : ?Int };
         #PermissionNotGranted;
         #PermissionExpired : { expired_at : Nat64 };
         #PermissionTypeNotFound : { permission : Text };
@@ -217,7 +217,7 @@ module Permissions {
         switch (Map.get(state.ban_state.banned_users, (func (n : Nat32) : Nat32 { n }, Nat32.equal), user_index)) {
             case (?expiry) {
                 if (expiry > Time.now()) {
-                    return #Banned({ reason = "User is currently banned" });
+                    return #Banned({ reason = "User is currently banned"; expires_at = ?expiry });
                 };
             };
             case null {};
@@ -491,7 +491,15 @@ module Permissions {
         public func ban_user(caller : Principal, target : Principal, reason : Text, expires_at : ?Int) : T.PermissionResult<()> {
             if (not check_permission(caller, "admin")) {
                 if (is_banned(caller)) {
-                    return #Err(#Banned({ reason = "User is currently banned"; expires_at = null }));
+                    let user_index = state.dedup.getOrCreateIndexForPrincipal(caller);
+                    switch (Map.get(state.ban_state.banned_users, nat32Utils, user_index)) {
+                        case (?expiry) {
+                            return #Err(#Banned({ reason = "User is currently banned"; expires_at = ?expiry }));
+                        };
+                        case null {
+                            return #Err(#Banned({ reason = "User is currently banned"; expires_at = null }));
+                        };
+                    };
                 } else {
                     return #Err(#NotAuthorized({ required_permission = "admin" }));
                 }
@@ -516,7 +524,15 @@ module Permissions {
         public func unban_user(caller : Principal, target : Principal) : T.PermissionResult<()> {
             if (not check_permission(caller, UNBAN_USER)) {
                 if (is_banned(caller)) {
-                    return #Err(#Banned({ reason = "User is currently banned"; expires_at = null }));
+                    let user_index = state.dedup.getOrCreateIndexForPrincipal(caller);
+                    switch (Map.get(state.ban_state.banned_users, nat32Utils, user_index)) {
+                        case (?expiry) {
+                            return #Err(#Banned({ reason = "User is currently banned"; expires_at = ?expiry }));
+                        };
+                        case null {
+                            return #Err(#Banned({ reason = "User is currently banned"; expires_at = null }));
+                        };
+                    };
                 } else {
                     return #Err(#NotAuthorized({ required_permission = "unban_user" }));
                 }
@@ -706,7 +722,15 @@ module Permissions {
         ) : async T.AdminResult<()> {
             if (not check_permission(caller, ADD_ADMIN_PERMISSION)) {
                 if (is_banned(caller)) {
-                    return #Err(#Banned({ reason = "User is currently banned"; expires_at = null }));
+                    let user_index = state.dedup.getOrCreateIndexForPrincipal(caller);
+                    switch (Map.get(state.ban_state.banned_users, nat32Utils, user_index)) {
+                        case (?expiry) {
+                            return #Err(#Banned({ reason = "User is currently banned"; expires_at = ?expiry }));
+                        };
+                        case null {
+                            return #Err(#Banned({ reason = "User is currently banned"; expires_at = null }));
+                        };
+                    };
                 };
                 return #Err(#NotAuthorized({ required_permission = ADD_ADMIN_PERMISSION }));
             };
@@ -729,7 +753,15 @@ module Permissions {
         public func remove_admin(caller : Principal, admin : Principal) : async T.AdminResult<()> {
             if (not check_permission(caller, REMOVE_ADMIN_PERMISSION)) {
                 if (is_banned(caller)) {
-                    return #Err(#Banned({ reason = "User is currently banned"; expires_at = null }));
+                    let user_index = state.dedup.getOrCreateIndexForPrincipal(caller);
+                    switch (Map.get(state.ban_state.banned_users, nat32Utils, user_index)) {
+                        case (?expiry) {
+                            return #Err(#Banned({ reason = "User is currently banned"; expires_at = ?expiry }));
+                        };
+                        case null {
+                            return #Err(#Banned({ reason = "User is currently banned"; expires_at = null }));
+                        };
+                    };
                 };
                 return #Err(#NotAuthorized({ required_permission = REMOVE_ADMIN_PERMISSION }));
             };
@@ -775,7 +807,15 @@ module Permissions {
                 case (#err(msg)) {
                     if (Text.contains(msg, #text "Not authorized")) {
                         if (is_banned(caller)) {
-                            #Err(#Banned({ reason = "User is currently banned"; expires_at = null }))
+                            let user_index = state.dedup.getOrCreateIndexForPrincipal(caller);
+                            switch (Map.get(state.ban_state.banned_users, nat32Utils, user_index)) {
+                                case (?expiry) {
+                                    #Err(#Banned({ reason = "User is currently banned"; expires_at = ?expiry }))
+                                };
+                                case null {
+                                    #Err(#Banned({ reason = "User is currently banned"; expires_at = null }))
+                                };
+                            };
                         } else {
                             #Err(#NotAuthorized({ required_permission = "admin" }))
                         }
@@ -800,7 +840,15 @@ module Permissions {
                 case (#err(msg)) {
                     if (Text.contains(msg, #text "Not authorized")) {
                         if (is_banned(caller)) {
-                            #Err(#Banned({ reason = "User is currently banned"; expires_at = null }))
+                            let user_index = state.dedup.getOrCreateIndexForPrincipal(caller);
+                            switch (Map.get(state.ban_state.banned_users, nat32Utils, user_index)) {
+                                case (?expiry) {
+                                    #Err(#Banned({ reason = "User is currently banned"; expires_at = ?expiry }))
+                                };
+                                case null {
+                                    #Err(#Banned({ reason = "User is currently banned"; expires_at = null }))
+                                };
+                            };
                         } else {
                             #Err(#NotAuthorized({ required_permission = "admin" }))
                         }
