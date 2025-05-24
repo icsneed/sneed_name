@@ -220,15 +220,8 @@ module {
             sns_governance : SnsPermissions.SnsGovernanceCanister
         ) : async* Result.Result<(), Text> {
             // Check permissions
-            switch (sns_permissions) {
-                case (?sp) {
-                    if (not (await sp.can_set_neuron_name(caller, neuron_id, sns_governance))) {
-                        return #err("Not authorized: caller must have set_sns_neuron_name permission or be a hotkey for this neuron");
-                    };
-                };
-                case null {
-                    return #err("SNS permissions not configured");
-                };
+            if (not (await* can_set_neuron_name(caller, neuron_id, sns_permissions, sns_governance))) {
+                return #err("Not authorized: caller must have set_sns_neuron_name permission or be a hotkey for this neuron");
             };
 
             let name_lower = Text.toLowercase(name);
@@ -297,15 +290,8 @@ module {
             sns_governance : SnsPermissions.SnsGovernanceCanister
         ) : async* Result.Result<(), Text> {
             // Check permissions
-            switch (sns_permissions) {
-                case (?sp) {
-                    if (not (await sp.can_set_neuron_name(caller, neuron_id, sns_governance))) {
-                        return #err("Not authorized: caller must have remove_sns_neuron_name permission or be a hotkey for this neuron");
-                    };
-                };
-                case null {
-                    return #err("SNS permissions not configured");
-                };
+            if (not (await* can_set_neuron_name(caller, neuron_id, sns_permissions, sns_governance))) {
+                return #err("Not authorized: caller must have remove_sns_neuron_name permission or be a hotkey for this neuron");
             };
 
             let neuron_index = dedup.getOrCreateIndex(neuron_id.id);
