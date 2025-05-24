@@ -173,16 +173,16 @@ module {
             caller : Principal,
             neuron_id : { id : Blob },
             sns_governance : SnsPermissions.SnsGovernanceCanister
-        ) : async* Bool {
+        ) : async* Permissions.PermissionResult {
             // First check if caller has general permission using detailed check
             switch (permissions) {
                 case (?p) {
                     switch (p.check_permission_detailed(caller, SET_SNS_NEURON_NAME_PERMISSION)) {
-                        case (#Allowed) { return true };
-                        case (#Banned(_)) { return false };  // Banned users cannot proceed to fallback checks
+                        case (#Allowed) { return #Allowed };
+                        case (#Banned(reason)) { return #Banned(reason) };  // Banned users cannot proceed to fallback checks
                         case (#PermissionNotGranted) {};  // Continue to fallback checks
-                        case (#PermissionExpired(_)) {};  // Continue to fallback checks
-                        case (#PermissionTypeNotFound(_)) {};  // Continue to fallback checks
+                        case (#PermissionExpired(info)) {};  // Continue to fallback checks
+                        case (#PermissionTypeNotFound(info)) {};  // Continue to fallback checks
                         case (#NoPrincipalPermissions) {};  // Continue to fallback checks
                     };
                 };
@@ -192,9 +192,14 @@ module {
             // Fall back to checking if neuron is in caller's reachable set
             switch (sns_permissions) {
                 case (?sp) {
-                    await sp.has_neuron_access(caller, neuron_id, sns_governance)
+                    let has_access = await sp.has_neuron_access(caller, neuron_id, sns_governance);
+                    if (has_access) {
+                        #Allowed
+                    } else {
+                        #PermissionNotGranted
+                    }
                 };
-                case null { false };
+                case null { #PermissionNotGranted };
             };
         };
 
@@ -203,16 +208,16 @@ module {
             caller : Principal,
             target : Principal,
             sns_governance : SnsPermissions.SnsGovernanceCanister
-        ) : async* Bool {
+        ) : async* Permissions.PermissionResult {
             // First check if caller has general permission using detailed check
             switch (permissions) {
                 case (?p) {
                     switch (p.check_permission_detailed(caller, SET_SNS_PRINCIPAL_NAME_PERMISSION)) {
-                        case (#Allowed) { return true };
-                        case (#Banned(_)) { return false };  // Banned users cannot proceed to fallback checks
+                        case (#Allowed) { return #Allowed };
+                        case (#Banned(reason)) { return #Banned(reason) };  // Banned users cannot proceed to fallback checks
                         case (#PermissionNotGranted) {};  // Continue to fallback checks
-                        case (#PermissionExpired(_)) {};  // Continue to fallback checks
-                        case (#PermissionTypeNotFound(_)) {};  // Continue to fallback checks
+                        case (#PermissionExpired(info)) {};  // Continue to fallback checks
+                        case (#PermissionTypeNotFound(info)) {};  // Continue to fallback checks
                         case (#NoPrincipalPermissions) {};  // Continue to fallback checks
                     };
                 };
@@ -225,20 +230,25 @@ module {
                     case (?p) {
                         // Even for self-editing, check if user is banned
                         switch (p.check_permission_detailed(caller, "dummy_permission")) {
-                            case (#Banned(_)) { return false };
-                            case _ { return true };
+                            case (#Banned(reason)) { return #Banned(reason) };
+                            case _ { return #Allowed };
                         };
                     };
-                    case null { return true };
+                    case null { return #Allowed };
                 };
             };
             
             // Fall back to checking if principal is in caller's reachable set
             switch (sns_permissions) {
                 case (?sp) {
-                    await sp.has_principal_access(caller, target, sns_governance)
+                    let has_access = await sp.has_principal_access(caller, target, sns_governance);
+                    if (has_access) {
+                        #Allowed
+                    } else {
+                        #PermissionNotGranted
+                    }
                 };
-                case null { false };
+                case null { #PermissionNotGranted };
             };
         };
 
@@ -250,8 +260,23 @@ module {
             sns_governance : SnsPermissions.SnsGovernanceCanister
         ) : async* Result.Result<(), Text> {
             // Check permissions
-            if (not (await* can_set_neuron_name(caller, neuron_id, sns_governance))) {
-                return #err("Not authorized: caller must have set_sns_neuron_name permission or be a hotkey for this neuron");
+            switch (await* can_set_neuron_name(caller, neuron_id, sns_governance)) {
+                case (#Allowed) {};
+                case (#Banned(reason)) {
+                    return #err("Access denied: " # reason.reason);
+                };
+                case (#PermissionNotGranted) {
+                    return #err("Not authorized: caller must have set_sns_neuron_name permission or be a hotkey for this neuron");
+                };
+                case (#PermissionExpired(info)) {
+                    return #err("Permission expired at " # Nat64.toText(info.expired_at));
+                };
+                case (#PermissionTypeNotFound(info)) {
+                    return #err("Permission type not found: " # info.permission);
+                };
+                case (#NoPrincipalPermissions) {
+                    return #err("No permissions found for caller");
+                };
             };
 
             let name_lower = Text.toLowercase(name);
@@ -319,8 +344,23 @@ module {
             sns_governance : SnsPermissions.SnsGovernanceCanister
         ) : async* Result.Result<(), Text> {
             // Check permissions
-            if (not (await* can_set_neuron_name(caller, neuron_id, sns_governance))) {
-                return #err("Not authorized: caller must have remove_sns_neuron_name permission or be a hotkey for this neuron");
+            switch (await* can_set_neuron_name(caller, neuron_id, sns_governance)) {
+                case (#Allowed) {};
+                case (#Banned(reason)) {
+                    return #err("Access denied: " # reason.reason);
+                };
+                case (#PermissionNotGranted) {
+                    return #err("Not authorized: caller must have remove_sns_neuron_name permission or be a hotkey for this neuron");
+                };
+                case (#PermissionExpired(info)) {
+                    return #err("Permission expired at " # Nat64.toText(info.expired_at));
+                };
+                case (#PermissionTypeNotFound(info)) {
+                    return #err("Permission type not found: " # info.permission);
+                };
+                case (#NoPrincipalPermissions) {
+                    return #err("No permissions found for caller");
+                };
             };
 
             let neuron_index = dedup.getOrCreateIndex(neuron_id.id);
