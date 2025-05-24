@@ -231,7 +231,7 @@ actor {
   public shared ({ caller }) func unban_user(
     user: Principal
   ) : async Result.Result<(), Text> {
-    ban_system.unban_user(caller, user);
+    ban_system.unban_user(caller, user)
   };
 
   public query func check_ban_status(user: Principal) : async Result.Result<Text, Text> {

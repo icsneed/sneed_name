@@ -201,6 +201,7 @@ module {
                 return #err("Anonymous caller");
             };
 
+            // Check if caller is admin or has unban permission
             if (not check_permission(caller, "unban_user")) {
                 return #err("Not authorized to unban users");
             };

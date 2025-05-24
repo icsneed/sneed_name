@@ -12,6 +12,8 @@ import Nat32 "mo:base/Nat32";
 import SnsPermissions "../src/SnsPermissions";
 import T "../src/Types";
 import Bans "../src/Bans";
+import BanPermissions "../src/BanPermissions";
+import NamePermissions "../src/sneed_name/NamePermissions";
 
 // Mock SNS governance canister
 actor class MockSnsGovernance() {
@@ -62,6 +64,8 @@ do {
         await test_non_admin_permissions();
         await test_sns_permissions();
         await test_name_management();
+        await test_ban_system();
+        await test_ban_integration();
         Debug.print("All tests passed! 🎉");
     };
 
@@ -415,6 +419,194 @@ do {
         };
 
         Debug.print("✓ Name management tests passed");
+    };
+
+    // Test basic ban system functionality
+    shared func test_ban_system() : async () {
+        Debug.print("Testing ban system...");
+
+        // Set up permissions
+        let state = Permissions.empty();
+        let admin_metadata : Permissions.PermissionMetadata = {
+            created_by = admin1;
+            created_at = Nat64.fromIntWrap(Time.now());
+            expires_at = null;
+        };
+        let admin1_index = state.dedup.getOrCreateIndexForPrincipal(admin1);
+        Map.set(state.admins, (func (n : Nat32) : Nat32 { n }, Nat32.equal), admin1_index, admin_metadata);
+        let permissions = Permissions.PermissionsManager(state);
+
+        // Add ban permission types
+        switch(BanPermissions.add_ban_permissions(permissions)) {
+            case (#err(e)) { Debug.trap("Failed to add ban permissions: " # e) };
+            case (#ok()) {};
+        };
+
+        // Set up ban system
+        let ban_state = Bans.empty();
+        let ban_system = Bans.Bans(ban_state, state.dedup, func(p: Principal, perm: Text) : Bool {
+            permissions.check_permission(p, perm)
+        });
+
+        // Grant ban permissions to user1
+        switch(permissions.grant_permission(admin1, user1, BanPermissions.BAN_USER, null)) {
+            case (#err(e)) { Debug.trap("Failed to grant ban permission: " # e) };
+            case (#ok()) {};
+        };
+
+        // Grant unban permission to admin1
+        switch(permissions.grant_permission(admin1, admin1, BanPermissions.UNBAN_USER, null)) {
+            case (#err(e)) { Debug.trap("Failed to grant unban permission: " # e) };
+            case (#ok()) {};
+        };
+
+        // Grant manage ban settings permission to admin1
+        switch(permissions.grant_permission(admin1, admin1, BanPermissions.MANAGE_BAN_SETTINGS, null)) {
+            case (#err(e)) { Debug.trap("Failed to grant manage ban settings permission: " # e) };
+            case (#ok()) {};
+        };
+
+        // Test banning a user
+        switch(ban_system.ban_user(user1, user2, ?(24), "Test ban")) {
+            case (#err(e)) { Debug.trap("Failed to ban user: " # e) };
+            case (#ok()) {};
+        };
+
+        // Verify user is banned
+        assert(ban_system.is_banned(user2) == true);
+
+        // Test ban status check
+        switch(ban_system.check_ban_status(user2)) {
+            case (#err(_)) { Debug.trap("Ban status check failed") };
+            case (#ok(msg)) {
+                assert(Text.contains(msg, #text "banned"));
+            };
+        };
+
+        // Test ban log
+        switch(ban_system.get_ban_log(admin1)) {
+            case (#err(e)) { Debug.trap("Failed to get ban log: " # e) };
+            case (#ok(log)) {
+                assert(log.size() == 1);
+                assert(Principal.equal(log[0].user, user2));
+                assert(Principal.equal(log[0].admin, user1));
+                assert(log[0].reason == "Test ban");
+            };
+        };
+
+        // Test unbanning
+        switch(ban_system.unban_user(admin1, user2)) {
+            case (#err(e)) { Debug.trap("Failed to unban user: " # e) };
+            case (#ok()) {};
+        };
+
+        // Verify user is no longer banned
+        assert(ban_system.is_banned(user2) == false);
+
+        Debug.print("✓ Ban system tests passed");
+    };
+
+    // Test ban system integration with permissions and name management
+    shared func test_ban_integration() : async () {
+        Debug.print("Testing ban integration...");
+
+        // Set up permissions
+        let state = Permissions.empty();
+        let admin_metadata : Permissions.PermissionMetadata = {
+            created_by = admin1;
+            created_at = Nat64.fromIntWrap(Time.now());
+            expires_at = null;
+        };
+        let admin1_index = state.dedup.getOrCreateIndexForPrincipal(admin1);
+        Map.set(state.admins, (func (n : Nat32) : Nat32 { n }, Nat32.equal), admin1_index, admin_metadata);
+        let permissions = Permissions.PermissionsManager(state);
+
+        // Add required permission types
+        switch(BanPermissions.add_ban_permissions(permissions)) {
+            case (#err(e)) { Debug.trap("Failed to add ban permissions: " # e) };
+            case (#ok()) {};
+        };
+        switch(NamePermissions.add_name_permissions(permissions)) {
+            case (#err(e)) { Debug.trap("Failed to add name permissions: " # e) };
+            case (#ok()) {};
+        };
+
+        // Set up ban system
+        let ban_state = Bans.empty();
+        let ban_system = Bans.Bans(ban_state, state.dedup, func(p: Principal, perm: Text) : Bool {
+            permissions.check_permission(p, perm)
+        });
+
+        // Set ban checker in permissions
+        permissions.set_ban_checker(func(p: Principal) : Bool {
+            ban_system.is_banned(p)
+        });
+
+        // Set up SNS permissions with ban integration
+        let sns_state = SnsPermissions.from_stable(
+            SnsPermissions.empty_stable(),
+            permissions,
+            state.dedup,
+            ban_system
+        );
+        let sns_permissions = SnsPermissions.SnsPermissions(sns_state);
+
+        // Set up name index
+        let name_state = Lib.empty();
+        let name_index = Lib.NameIndex(name_state, ?sns_permissions);
+
+        // Grant permissions to user1
+        switch(permissions.grant_permission(admin1, user1, NamePermissions.EDIT_ANY_NAME, null)) {
+            case (#err(e)) { Debug.trap("Failed to grant name permission: " # e) };
+            case (#ok()) {};
+        };
+
+        // Verify user1 can set names before being banned
+        switch(await* name_index.set_principal_name(user1, user2, "test-name")) {
+            case (#err(e)) { Debug.trap("Failed to set name before ban: " # e) };
+            case (#ok()) {};
+        };
+
+        // Ban user1
+        switch(ban_system.ban_user(admin1, user1, ?(24), "Test integration")) {
+            case (#err(e)) { Debug.trap("Failed to ban user: " # e) };
+            case (#ok()) {};
+        };
+
+        // Verify banned user1 cannot set names despite having permission
+        switch(await* name_index.set_principal_name(user1, user2, "another-name")) {
+            case (#err(_)) {}; // Expected error
+            case (#ok()) { Debug.trap("Banned user should not be able to set names") };
+        };
+
+        // Create mock SNS governance
+        let mock_governance = await MockSnsGovernance();
+
+        // Test that banned user cannot use SNS permissions
+        let test_neuron_id = { id = Text.encodeUtf8("neuron1") };
+        switch(await* name_index.set_sns_neuron_name(
+            user1,
+            test_neuron_id,
+            "test-neuron",
+            mock_governance
+        )) {
+            case (#err(_)) {}; // Expected error
+            case (#ok()) { Debug.trap("Banned user should not be able to set neuron names") };
+        };
+
+        // Unban user1
+        switch(ban_system.unban_user(admin1, user1)) {
+            case (#err(e)) { Debug.trap("Failed to unban user: " # e) };
+            case (#ok()) {};
+        };
+
+        // Verify user1 can set names again after unban
+        switch(await* name_index.set_principal_name(user1, user2, "post-ban-name")) {
+            case (#err(e)) { Debug.trap("Failed to set name after unban: " # e) };
+            case (#ok()) {};
+        };
+
+        Debug.print("✓ Ban integration tests passed");
     };
 
     run_tests();
