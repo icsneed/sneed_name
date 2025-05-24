@@ -34,8 +34,7 @@ actor {
   // Create SNS permissions wrapper
   var sns_state : SnsPermissions.SnsState = SnsPermissions.from_stable(
     stable_sns_state,
-    permissions,
-    permissions.get_dedup()
+    permissions
   );
   var sns_permissions : SnsPermissions.SnsPermissions = SnsPermissions.SnsPermissions(sns_state);
 
