@@ -11,6 +11,7 @@ import Nat64 "mo:base/Nat64";
 import Nat32 "mo:base/Nat32";
 import SnsPermissions "../src/SnsPermissions";
 import T "../src/Types";
+import Bans "../src/Bans";
 
 // Mock SNS governance canister
 actor class MockSnsGovernance() {
@@ -299,12 +300,16 @@ do {
         Map.set(state.admins, (func (n : Nat32) : Nat32 { n }, Nat32.equal), admin1_index, admin_metadata);
         let permissions = Permissions.PermissionsManager(state);
 
+        // Create ban system with dummy permission checker
+        let ban_state = Bans.empty();
+        let ban_system = Bans.Bans(ban_state, state.dedup, func(p: Principal, perm: Text) : Bool { false });
+
         // Set up SNS permissions
         let sns_state = SnsPermissions.from_stable(
             SnsPermissions.empty_stable(),
             permissions,
             state.dedup,
-            ban_system  // Add ban system parameter
+            ban_system
         );
         let sns_permissions = SnsPermissions.SnsPermissions(sns_state);
 
@@ -313,7 +318,7 @@ do {
 
         // Set up name index
         let name_state = Lib.empty();
-        let name_index = Lib.NameIndex(name_state, ?sns_permissions, ?mock_governance);
+        let name_index = Lib.NameIndex(name_state, ?sns_permissions);
 
         // Test setting SNS permission settings
         let settings : SnsPermissions.SnsPermissionSettings = {
@@ -345,7 +350,8 @@ do {
         switch(await* name_index.set_sns_neuron_name(
             user1,
             test_neuron_id,
-            "test-neuron"
+            "test-neuron",
+            mock_governance
         )) {
             case (#err(e)) { Debug.trap("Failed to set neuron name: " # e) };
             case (#ok()) {};
@@ -373,7 +379,7 @@ do {
 
         // Set up name index
         let name_state = Lib.empty();
-        let name_index = Lib.NameIndex(name_state, null, null);
+        let name_index = Lib.NameIndex(name_state, null);  // No SNS permissions needed
 
         // Test setting principal name
         switch(await* name_index.set_principal_name(user1, user1, "test-user")) {
