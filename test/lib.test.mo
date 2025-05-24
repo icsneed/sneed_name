@@ -576,7 +576,7 @@ do {
             case (#Ok(log)) {
                 assert(log.size() == 1);
                 assert(Principal.equal(log[0].user, user2));
-                assert(Principal.equal(log[0].admin, user1));
+                assert(Principal.equal(log[0].admin, admin1));
                 assert(log[0].reason == "Test ban");
             };
         };
