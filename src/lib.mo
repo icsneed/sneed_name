@@ -18,7 +18,7 @@ module {
     public let SET_SNS_PRINCIPAL_NAME_PERMISSION = "set_sns_principal_name";
     public let REMOVE_SNS_PRINCIPAL_NAME_PERMISSION = "remove_sns_principal_name";
 
-    public func empty() : T.NameIndexState {
+    public func empty_stable() : T.NameIndexState {
         {
             name_to_index = Map.new<Nat32, T.Name>();
             index_to_name = Map.new<Text, Nat32>();

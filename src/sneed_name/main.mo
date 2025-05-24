@@ -17,7 +17,7 @@ actor {
   // Stable state
   stable var stable_permission_state : Permissions.StablePermissionState = Permissions.empty_stable();
   stable var stable_sns_state : SnsPermissions.StableSnsState = SnsPermissions.empty_stable();
-  stable var name_index_state : T.NameIndexState = NameIndex.empty();
+  stable var stable_name_index_state : T.NameIndexState = NameIndex.empty_stable();
 
   // Create permissions first since we need its dedup
   var permission_state : Permissions.PermissionState = Permissions.from_stable(
@@ -27,7 +27,7 @@ actor {
 
   // Create name index using permissions' dedup
   var name_index : NameIndex.NameIndex = NameIndex.NameIndex(
-    name_index_state,
+    stable_name_index_state,
     null  // sns_permissions
   );
 
@@ -41,7 +41,7 @@ actor {
 
   // Now update name index with the permissions
   name_index := NameIndex.NameIndex(
-    name_index_state,
+    stable_name_index_state,
     ?sns_permissions
   );
 
