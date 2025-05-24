@@ -1270,6 +1270,13 @@ module {
             case (#Ok()) {};
         };
 
+        #Ok(());
+    };
+
+    // Function to add general name management permission types
+    public func add_name_management_permissions(
+        permissions : Permissions.PermissionsManager
+    ) : T.PermissionResult<()> {
         // Add permission type for setting ICRC1 account names
         let set_account_result = permissions.add_permission_type(
             SET_ACCOUNT_NAME_PERMISSION,

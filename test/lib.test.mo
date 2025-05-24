@@ -1180,8 +1180,8 @@ do {
 
     // Test banned words functionality
     shared func test_banned_words() : async () {
-        Debug.print("Testing banned words...");
-
+        Debug.print("Testing banned words functionality...");
+        
         // Set up base permissions
         let state = Permissions.empty();
         let admin_metadata : Permissions.PermissionMetadata = {
@@ -1192,31 +1192,41 @@ do {
         let admin1_index = state.dedup.getOrCreateIndexForPrincipal(admin1);
         Map.set(state.admins, (func (n : Nat32) : Nat32 { n }, Nat32.equal), admin1_index, admin_metadata);
         let permissions = Permissions.PermissionsManager(state);
-
-        // Add all required permission types
-        switch(Lib.add_sns_permissions(permissions)) {
-            case (#Err(e)) { Debug.trap("Failed to add SNS permissions: " # debug_show(e)) };
+        
+        // Set up permissions for banned words
+        let permissions_result = Lib.add_name_management_permissions(permissions);
+        switch(permissions_result) {
+            case (#Err(e)) { Debug.trap("Failed to add name management permissions: " # debug_show(e)) };
             case (#Ok()) {};
         };
-        switch(BanPermissions.add_ban_permissions(permissions)) {
-            case (#Err(e)) { Debug.trap("Failed to add ban permissions: " # debug_show(e)) };
+        
+        // Grant permission to add banned words
+        let grant_result = permissions.grant_permission(
+            admin1,
+            admin1,
+            Lib.ADD_BANNED_WORD_PERMISSION,
+            ?(365 * 24 * 60 * 60 * 1_000_000_000)
+        );
+        switch(grant_result) {
+            case (#Err(e)) { Debug.trap("Failed to grant add banned word permission: " # debug_show(e)) };
+            case (#Ok()) {};
+        };
+
+        // Grant permission to remove banned words
+        let remove_grant_result = permissions.grant_permission(
+            admin1,
+            admin1,
+            Lib.REMOVE_BANNED_WORD_PERMISSION,
+            ?(365 * 24 * 60 * 60 * 1_000_000_000)
+        );
+        switch(remove_grant_result) {
+            case (#Err(e)) { Debug.trap("Failed to grant remove banned word permission: " # debug_show(e)) };
             case (#Ok()) {};
         };
 
         // Set up name index
         let name_state = Lib.empty_stable();
         let name_index = Lib.NameIndex(name_state, null);
-
-        // Grant banned word management permissions to admin1
-        switch(permissions.grant_permission(admin1, admin1, Lib.ADD_BANNED_WORD_PERMISSION, null)) {
-            case (#Err(e)) { Debug.trap("Failed to grant add banned word permission: " # debug_show(e)) };
-            case (#Ok()) {};
-        };
-
-        switch(permissions.grant_permission(admin1, admin1, Lib.REMOVE_BANNED_WORD_PERMISSION, null)) {
-            case (#Err(e)) { Debug.trap("Failed to grant remove banned word permission: " # debug_show(e)) };
-            case (#Ok()) {};
-        };
 
         // Test adding banned words
         switch(await* name_index.add_banned_word(admin1, "BadWord")) {
