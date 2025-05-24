@@ -14,6 +14,12 @@ module {
         updated_by : Principal;
     };
 
+    // ICRC1 Account type
+    public type Account = {
+        owner : Principal;
+        subaccount : ?Blob;
+    };
+
     public type NameIndexState = {
         name_to_index : Map.Map<Nat32, Name>;
         index_to_name : Map.Map<Text, Nat32>;

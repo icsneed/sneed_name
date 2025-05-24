@@ -9,6 +9,7 @@ import Permissions "../src/Permissions";
 import Time "mo:base/Time";
 import Nat64 "mo:base/Nat64";
 import Nat32 "mo:base/Nat32";
+import Array "mo:base/Array";
 import SnsPermissions "../src/SnsPermissions";
 import T "../src/Types";
 import Bans "../src/Bans";
@@ -96,6 +97,7 @@ do {
         await test_verification_system();
         await test_ban_system();
         await test_ban_integration();
+        await test_account_naming();
         Debug.print("All tests passed! 🎉");
     };
 
@@ -1072,6 +1074,107 @@ do {
         };
 
         Debug.print("✓ Ban integration tests passed");
+    };
+
+    // Test ICRC1 account naming functionality
+    shared func test_account_naming() : async () {
+        Debug.print("Testing ICRC1 account naming...");
+
+        // Set up base permissions
+        let state = Permissions.empty();
+        let admin_metadata : Permissions.PermissionMetadata = {
+            created_by = admin1;
+            created_at = Nat64.fromIntWrap(Time.now());
+            expires_at = null;
+        };
+        let admin1_index = state.dedup.getOrCreateIndexForPrincipal(admin1);
+        Map.set(state.admins, (func (n : Nat32) : Nat32 { n }, Nat32.equal), admin1_index, admin_metadata);
+        let permissions = Permissions.PermissionsManager(state);
+
+        // Add account permission types
+        switch(Lib.add_sns_permissions(permissions)) {
+            case (#Err(e)) { Debug.trap("Failed to add SNS permissions: " # debug_show(e)) };
+            case (#Ok()) {};
+        };
+
+        // Set up name index
+        let name_state = Lib.empty_stable();
+        let name_index = Lib.NameIndex(name_state, null);
+
+        // Test account with default subaccount (should route to principal naming)
+        let default_account : T.Account = { owner = user1; subaccount = null };
+        
+        // Test setting name for default subaccount
+        switch(await* name_index.set_account_name(user1, default_account, "default-account")) {
+            case (#Err(e)) { Debug.trap("Failed to set default account name: " # debug_show(e)) };
+            case (#Ok()) {};
+        };
+
+        // Verify it was set as a principal name
+        switch(name_index.get_principal_name(user1)) {
+            case null { Debug.trap("Default account name not found in principal names") };
+            case (?name) {
+                assert(name.name == "default-account");
+                assert(name.created_by == user1);
+            };
+        };
+
+        // Verify get_account_name also works for default subaccount
+        switch(name_index.get_account_name(default_account)) {
+            case null { Debug.trap("Default account name not found via get_account_name") };
+            case (?name) {
+                assert(name.name == "default-account");
+            };
+        };
+
+        // Test account with actual subaccount
+        let subaccount_bytes = Array.tabulate<Nat8>(32, func(i) { if (i == 0) { 1 } else { 0 } });
+        let subaccount_blob = Blob.fromArray(subaccount_bytes);
+        let real_account : T.Account = { owner = user1; subaccount = ?subaccount_blob };
+
+        // Test setting name for real subaccount
+        switch(await* name_index.set_account_name(user1, real_account, "real-account")) {
+            case (#Err(e)) { Debug.trap("Failed to set real account name: " # debug_show(e)) };
+            case (#Ok()) {};
+        };
+
+        // Verify it was set as an account name
+        switch(name_index.get_account_name(real_account)) {
+            case null { Debug.trap("Real account name not found") };
+            case (?name) {
+                assert(name.name == "real-account");
+                assert(name.created_by == user1);
+            };
+        };
+
+        // Test that account names are separate from principal names
+        assert(name_index.is_account_name_taken("default-account") == true);
+        assert(name_index.is_account_name_taken("real-account") == true);
+        assert(name_index.is_account_name_taken("nonexistent") == false);
+
+        // Test removing real account name
+        switch(await* name_index.remove_account_name(user1, real_account)) {
+            case (#Err(e)) { Debug.trap("Failed to remove real account name: " # debug_show(e)) };
+            case (#Ok()) {};
+        };
+
+        // Verify it was removed
+        switch(name_index.get_account_name(real_account)) {
+            case null {}; // Expected
+            case (?name) { Debug.trap("Real account name should have been removed") };
+        };
+
+        // Test that non-owner cannot set account names
+        let other_account : T.Account = { owner = user2; subaccount = ?subaccount_blob };
+        switch(await* name_index.set_account_name(user1, other_account, "unauthorized")) {
+            case (#Err(#NotAuthorized(info))) { 
+                assert(info.required_permission == ?Lib.SET_ACCOUNT_NAME_PERMISSION);
+            };
+            case (#Err(e)) { Debug.trap("Expected NotAuthorized error, got: " # debug_show(e)) };
+            case (#Ok()) { Debug.trap("Non-owner should not be able to set account names") };
+        };
+
+        Debug.print("✓ ICRC1 account naming tests passed");
     };
 
     run_tests();
