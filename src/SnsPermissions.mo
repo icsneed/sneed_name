@@ -110,6 +110,11 @@ module {
     };
 
     public class SnsPermissions(state : SnsState) {
+        // Get the permissions manager
+        public func get_permissions() : Permissions.PermissionsManager {
+            state.permissions
+        };
+
         // Helper to get total voting power for a principal's hotkey access in an SNS
         private func get_voting_power(
             principal : Principal,

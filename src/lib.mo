@@ -28,12 +28,15 @@ module {
 
     public class NameIndex(
         from: T.NameIndexState, 
-        permissions: ?Permissions.PermissionsManager,
         sns_permissions: ?SnsPermissions.SnsPermissions,
         sns_governance: ?SnsPermissions.SnsGovernanceCanister
     ) {
         private let state = from;
         let dedup = Dedup.Dedup(state.dedup_state);
+        private let permissions = switch (sns_permissions) {
+            case (?sp) { ?sp.get_permissions() };
+            case null { null };
+        };
 
         let nat32Utils = (func (n : Nat32) : Nat32 { n }, Nat32.equal);
         let textUtils = (Text.hash, Text.equal);
