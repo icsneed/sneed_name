@@ -12,6 +12,12 @@ import NamePermissions "./sneed_name/NamePermissions";
 import SnsPermissions "./SnsPermissions";
 
 module {
+    // Permission type constants for SNS name management
+    public let SET_SNS_NEURON_NAME_PERMISSION = "set_sns_neuron_name";
+    public let REMOVE_SNS_NEURON_NAME_PERMISSION = "remove_sns_neuron_name";
+    public let SET_SNS_PRINCIPAL_NAME_PERMISSION = "set_sns_principal_name";
+    public let REMOVE_SNS_PRINCIPAL_NAME_PERMISSION = "remove_sns_principal_name";
+
     public func empty() : T.NameIndexState {
         {
             dedup_state = ?Dedup.empty();
@@ -145,6 +151,63 @@ module {
                     Map.get(state.name_to_index, nat32Utils, index);
                 };
                 case null { null };
+            };
+        };
+
+        // Check if caller can set a neuron's name
+        public func can_set_neuron_name(
+            caller : Principal,
+            neuron_id : { id : Blob },
+            sns_permissions : ?SnsPermissions.SnsPermissions,
+            sns_governance : SnsPermissions.SnsGovernanceCanister
+        ) : async* Bool {
+            // First check if caller has general permission
+            switch (permissions) {
+                case (?p) {
+                    if (p.check_permission(caller, SET_SNS_NEURON_NAME_PERMISSION)) {
+                        return true;
+                    };
+                };
+                case null {};
+            };
+            
+            // Fall back to checking if neuron is in caller's reachable set
+            switch (sns_permissions) {
+                case (?sp) {
+                    await sp.has_neuron_access(caller, neuron_id, sns_governance)
+                };
+                case null { false };
+            };
+        };
+
+        // Check if caller can set a principal's name
+        public func can_set_principal_name(
+            caller : Principal,
+            target : Principal,
+            sns_permissions : ?SnsPermissions.SnsPermissions,
+            sns_governance : SnsPermissions.SnsGovernanceCanister
+        ) : async* Bool {
+            // First check if caller has general permission
+            switch (permissions) {
+                case (?p) {
+                    if (p.check_permission(caller, SET_SNS_PRINCIPAL_NAME_PERMISSION)) {
+                        return true;
+                    };
+                };
+                case null {};
+            };
+
+            // Check if caller is the target principal
+            if (Principal.equal(caller, target)) {
+                return true;
+            };
+            
+            // Fall back to checking if principal is in caller's reachable set
+            switch (sns_permissions) {
+                case (?sp) {
+                    await sp.has_principal_access(caller, target, sns_governance)
+                };
+                case null { false };
             };
         };
 

@@ -13,12 +13,6 @@ import T "Types";
 import Buffer "mo:base/Buffer";
 
 module {
-    // Permission type constants
-    public let SET_SNS_NEURON_NAME_PERMISSION = "set_sns_neuron_name";
-    public let REMOVE_SNS_NEURON_NAME_PERMISSION = "remove_sns_neuron_name";
-    public let SET_SNS_PRINCIPAL_NAME_PERMISSION = "set_sns_principal_name";
-    public let REMOVE_SNS_PRINCIPAL_NAME_PERMISSION = "remove_sns_principal_name";
-
     public type NeuronId = { id : Blob };
 
     public type SnsPermissionSettings = {
@@ -252,7 +246,7 @@ module {
         };
 
         // Helper to check if caller has access to neuron
-        private func has_neuron_access(
+        public func has_neuron_access(
             caller : Principal,
             neuron_id : NeuronId,
             sns_governance : SnsGovernanceCanister
@@ -273,7 +267,7 @@ module {
         };
 
         // Helper to check if caller has access to a principal through their neurons
-        private func has_principal_access(
+        public func has_principal_access(
             caller : Principal,
             target : Principal,
             sns_governance : SnsGovernanceCanister
@@ -286,41 +280,6 @@ module {
                 };
             };
             false
-        };
-
-        // Check if caller can set a neuron's name
-        public func can_set_neuron_name(
-            caller : Principal,
-            neuron_id : NeuronId,
-            sns_governance : SnsGovernanceCanister
-        ) : async Bool {
-            // First check if caller has general permission
-            if (state.permissions.check_permission(caller, SET_SNS_NEURON_NAME_PERMISSION)) {
-                return true;
-            };
-            
-            // Fall back to checking if neuron is in caller's reachable set
-            await has_neuron_access(caller, neuron_id, sns_governance)
-        };
-
-        // Check if caller can set a principal's name
-        public func can_set_principal_name(
-            caller : Principal,
-            target : Principal,
-            sns_governance : SnsGovernanceCanister
-        ) : async Bool {
-            // First check if caller has general permission
-            if (state.permissions.check_permission(caller, SET_SNS_PRINCIPAL_NAME_PERMISSION)) {
-                return true;
-            };
-
-            // Check if caller is the target principal
-            if (Principal.equal(caller, target)) {
-                return true;
-            };
-            
-            // Fall back to checking if principal is in caller's reachable set
-            await has_principal_access(caller, target, sns_governance)
         };
 
         // Helper to find owner principals from a list of neurons
