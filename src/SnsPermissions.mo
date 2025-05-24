@@ -16,6 +16,8 @@ module {
     // Permission type constants
     public let SET_SNS_NEURON_NAME_PERMISSION = "set_sns_neuron_name";
     public let REMOVE_SNS_NEURON_NAME_PERMISSION = "remove_sns_neuron_name";
+    public let SET_SNS_PRINCIPAL_NAME_PERMISSION = "set_sns_principal_name";
+    public let REMOVE_SNS_PRINCIPAL_NAME_PERMISSION = "remove_sns_principal_name";
 
     public type NeuronId = { id : Blob };
 
@@ -270,6 +272,57 @@ module {
             false
         };
 
+        // Helper to check if caller has access to a principal through their neurons
+        private func has_principal_access(
+            caller : Principal,
+            target : Principal,
+            sns_governance : SnsGovernanceCanister
+        ) : async Bool {
+            let reachable_principals = await find_reachable_principals(caller, sns_governance);
+            
+            for (principal in reachable_principals.vals()) {
+                if (Principal.equal(principal, target)) {
+                    return true;
+                };
+            };
+            false
+        };
+
+        // Check if caller can set a neuron's name
+        public func can_set_neuron_name(
+            caller : Principal,
+            neuron_id : NeuronId,
+            sns_governance : SnsGovernanceCanister
+        ) : async Bool {
+            // First check if caller has general permission
+            if (state.permissions.check_permission(caller, SET_SNS_NEURON_NAME_PERMISSION)) {
+                return true;
+            };
+            
+            // Fall back to checking if neuron is in caller's reachable set
+            await has_neuron_access(caller, neuron_id, sns_governance)
+        };
+
+        // Check if caller can set a principal's name
+        public func can_set_principal_name(
+            caller : Principal,
+            target : Principal,
+            sns_governance : SnsGovernanceCanister
+        ) : async Bool {
+            // First check if caller has general permission
+            if (state.permissions.check_permission(caller, SET_SNS_PRINCIPAL_NAME_PERMISSION)) {
+                return true;
+            };
+
+            // Check if caller is the target principal
+            if (Principal.equal(caller, target)) {
+                return true;
+            };
+            
+            // Fall back to checking if principal is in caller's reachable set
+            await has_principal_access(caller, target, sns_governance)
+        };
+
         // Set name for a neuron
         public func set_sns_neuron_name(
             caller : Principal,
@@ -340,7 +393,6 @@ module {
             Map.delete(state.neuron_names, (func (n : Nat32) : Nat32 { n }, Nat32.equal), neuron_index);
             #ok(());
         };
-
 
         // Helper to find owner principals from a list of neurons
         public func find_reachable_principals(caller: Principal, sns_governance : SnsGovernanceCanister) : async [Principal] {
