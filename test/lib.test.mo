@@ -48,7 +48,7 @@ actor class MockSnsGovernance() {
 // Test static methods
 do {
     // Test principals
-    let admin1 = Principal.fromText("2vxsx-fae");
+    let admin1 = Principal.fromText("h4f44-ayaaa-aaaaq-aacjq-cai");
     let admin2 = Principal.fromText("rrkah-fqaaa-aaaaa-aaaaq-cai");
     let user1 = Principal.fromText("ryjl3-tyaaa-aaaaa-aaaba-cai");
     let user2 = Principal.fromText("fp274-iaaaa-aaaaq-aacha-cai");
@@ -462,6 +462,20 @@ do {
         let admin1_index = state.dedup.getOrCreateIndexForPrincipal(admin1);
         Map.set(state.admins, (func (n : Nat32) : Nat32 { n }, Nat32.equal), admin1_index, admin_metadata);
         let permissions = Permissions.PermissionsManager(state);
+
+        // Add built-in permission types first
+        ignore permissions.add_permission_type(
+            Permissions.ADD_ADMIN_PERMISSION,
+            "Can add new admins",
+            ?(365 * 24 * 60 * 60 * 1_000_000_000),  // 1 year max
+            ?(30 * 24 * 60 * 60 * 1_000_000_000)    // 30 days default
+        );
+        ignore permissions.add_permission_type(
+            Permissions.REMOVE_ADMIN_PERMISSION,
+            "Can remove admins",
+            ?(365 * 24 * 60 * 60 * 1_000_000_000),  // 1 year max
+            ?(30 * 24 * 60 * 60 * 1_000_000_000)    // 30 days default
+        );
 
         // Add ban permission types
         switch(BanPermissions.add_ban_permissions(permissions)) {
