@@ -65,6 +65,7 @@ do {
         await test_non_admin_permissions();
         await test_sns_permissions();
         await test_name_management();
+        await test_verification_system();
         await test_ban_system();
         await test_ban_integration();
         Debug.print("All tests passed! 🎉");
@@ -492,6 +493,149 @@ do {
         };
 
         Debug.print("✓ Name management tests passed");
+    };
+
+    // Test verification system functionality
+    shared func test_verification_system() : async () {
+        Debug.print("Testing verification system...");
+
+        // Set up base permissions
+        let state = Permissions.empty();
+        let admin_metadata : Permissions.PermissionMetadata = {
+            created_by = admin1;
+            created_at = Nat64.fromIntWrap(Time.now());
+            expires_at = null;
+        };
+        let admin1_index = state.dedup.getOrCreateIndexForPrincipal(admin1);
+        Map.set(state.admins, (func (n : Nat32) : Nat32 { n }, Nat32.equal), admin1_index, admin_metadata);
+        let permissions = Permissions.PermissionsManager(state);
+
+        // Add required permission types
+        switch(NamePermissions.add_name_permissions(permissions)) {
+            case (#Err(e)) { Debug.trap("Failed to add name permissions: " # debug_show(e)) };
+            case (#Ok()) {};
+        };
+
+        // Set up name index with permissions
+        let sns_state = SnsPermissions.from_stable(
+            SnsPermissions.empty_stable(),
+            permissions
+        );
+        let sns_permissions = SnsPermissions.SnsPermissions(sns_state);
+        let name_state = Lib.empty_stable();
+        let name_index = Lib.NameIndex(name_state, ?sns_permissions);
+
+        // Grant verification permissions to admin1
+        switch(permissions.grant_permission(admin1, admin1, NamePermissions.VERIFY_NAME, null)) {
+            case (#Err(e)) { Debug.trap("Failed to grant verify permission: " # debug_show(e)) };
+            case (#Ok()) {};
+        };
+
+        switch(permissions.grant_permission(admin1, admin1, NamePermissions.UNVERIFY_NAME, null)) {
+            case (#Err(e)) { Debug.trap("Failed to grant unverify permission: " # debug_show(e)) };
+            case (#Ok()) {};
+        };
+
+        // First, set a name for user1
+        switch(await* name_index.set_principal_name(user1, user1, "test-user")) {
+            case (#Err(e)) { Debug.trap("Failed to set name: " # debug_show(e)) };
+            case (#Ok()) {};
+        };
+
+        // Verify the name starts unverified
+        switch(name_index.get_principal_name(user1)) {
+            case null { Debug.trap("Name not found") };
+            case (?name) {
+                assert(name.verified == false);
+            };
+        };
+
+        // Test verifying the name
+        switch(await* name_index.verify_name(admin1, "test-user")) {
+            case (#Err(e)) { Debug.trap("Failed to verify name: " # debug_show(e)) };
+            case (#Ok()) {};
+        };
+
+        // Verify the name is now verified
+        switch(name_index.get_principal_name(user1)) {
+            case null { Debug.trap("Name not found after verification") };
+            case (?name) {
+                assert(name.verified == true);
+                assert(name.updated_by == admin1);
+            };
+        };
+
+        // Test unverifying the name
+        switch(await* name_index.unverify_name(admin1, "test-user")) {
+            case (#Err(e)) { Debug.trap("Failed to unverify name: " # debug_show(e)) };
+            case (#Ok()) {};
+        };
+
+        // Verify the name is now unverified
+        switch(name_index.get_principal_name(user1)) {
+            case null { Debug.trap("Name not found after unverification") };
+            case (?name) {
+                assert(name.verified == false);
+                assert(name.updated_by == admin1);
+            };
+        };
+
+        // Test that non-authorized users cannot verify names - expect NotAuthorized error
+        switch(await* name_index.verify_name(user2, "test-user")) {
+            case (#Err(#NotAuthorized(info))) { 
+                assert(info.required_permission == ?NamePermissions.VERIFY_NAME);
+            };
+            case (#Err(e)) { Debug.trap("Expected NotAuthorized error, got: " # debug_show(e)) };
+            case (#Ok()) { Debug.trap("Non-authorized user should not be able to verify names") };
+        };
+
+        // Test that non-authorized users cannot unverify names - expect NotAuthorized error
+        switch(await* name_index.unverify_name(user2, "test-user")) {
+            case (#Err(#NotAuthorized(info))) { 
+                assert(info.required_permission == ?NamePermissions.UNVERIFY_NAME);
+            };
+            case (#Err(e)) { Debug.trap("Expected NotAuthorized error, got: " # debug_show(e)) };
+            case (#Ok()) { Debug.trap("Non-authorized user should not be able to unverify names") };
+        };
+
+        // Test verifying non-existent name - expect NameNotFound error
+        switch(await* name_index.verify_name(admin1, "nonexistent-name")) {
+            case (#Err(#NameNotFound(info))) { 
+                assert(info.name == "nonexistent-name");
+            };
+            case (#Err(e)) { Debug.trap("Expected NameNotFound error, got: " # debug_show(e)) };
+            case (#Ok()) { Debug.trap("Should not be able to verify non-existent name") };
+        };
+
+        // Test that changing a verified name unverifies it
+        // First verify the name again
+        switch(await* name_index.verify_name(admin1, "test-user")) {
+            case (#Err(e)) { Debug.trap("Failed to verify name again: " # debug_show(e)) };
+            case (#Ok()) {};
+        };
+
+        // Grant edit permission to user1
+        switch(permissions.grant_permission(admin1, user1, NamePermissions.EDIT_ANY_NAME, null)) {
+            case (#Err(e)) { Debug.trap("Failed to grant edit permission: " # debug_show(e)) };
+            case (#Ok()) {};
+        };
+
+        // Change the name
+        switch(await* name_index.set_principal_name(user1, user1, "new-test-user")) {
+            case (#Err(e)) { Debug.trap("Failed to change name: " # debug_show(e)) };
+            case (#Ok()) {};
+        };
+
+        // Verify the new name is unverified
+        switch(name_index.get_principal_name(user1)) {
+            case null { Debug.trap("Name not found after change") };
+            case (?name) {
+                assert(name.name == "new-test-user");
+                assert(name.verified == false);  // Should be unverified after change
+            };
+        };
+
+        Debug.print("✓ Verification system tests passed");
     };
 
     // Test basic ban system functionality
