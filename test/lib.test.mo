@@ -562,6 +562,20 @@ do {
         Map.set(state.admins, (func (n : Nat32) : Nat32 { n }, Nat32.equal), admin1_index, admin_metadata);
         let permissions = Permissions.PermissionsManager(state);
 
+        // Add built-in permission types first
+        ignore permissions.add_permission_type(
+            Permissions.ADD_ADMIN_PERMISSION,
+            "Can add new admins",
+            ?(365 * 24 * 60 * 60 * 1_000_000_000),  // 1 year max
+            ?(30 * 24 * 60 * 60 * 1_000_000_000)    // 30 days default
+        );
+        ignore permissions.add_permission_type(
+            Permissions.REMOVE_ADMIN_PERMISSION,
+            "Can remove admins",
+            ?(365 * 24 * 60 * 60 * 1_000_000_000),  // 1 year max
+            ?(30 * 24 * 60 * 60 * 1_000_000_000)    // 30 days default
+        );
+
         // Add required permission types
         switch(BanPermissions.add_ban_permissions(permissions)) {
             case (#err(e)) { Debug.trap("Failed to add ban permissions: " # e) };
@@ -592,6 +606,12 @@ do {
         // Grant permissions to user1
         switch(permissions.grant_permission(admin1, user1, NamePermissions.EDIT_ANY_NAME, null)) {
             case (#err(e)) { Debug.trap("Failed to grant name permission: " # e) };
+            case (#ok()) {};
+        };
+
+        // Grant ban permissions to admin1
+        switch(permissions.grant_permission(admin1, admin1, BanPermissions.BAN_USER, null)) {
+            case (#err(e)) { Debug.trap("Failed to grant ban permission: " # e) };
             case (#ok()) {};
         };
 
@@ -626,6 +646,12 @@ do {
         )) {
             case (#err(_)) {}; // Expected error
             case (#ok()) { Debug.trap("Banned user should not be able to set neuron names") };
+        };
+
+        // Grant unban permission to admin1
+        switch(permissions.grant_permission(admin1, admin1, BanPermissions.UNBAN_USER, null)) {
+            case (#err(e)) { Debug.trap("Failed to grant unban permission: " # e) };
+            case (#ok()) {};
         };
 
         // Unban user1
