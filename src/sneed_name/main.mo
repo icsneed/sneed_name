@@ -25,12 +25,6 @@ actor {
   );
   var permissions : Permissions.PermissionsManager = Permissions.PermissionsManager(permission_state);
 
-  // Create name index using permissions' dedup
-  var name_index : NameIndex.NameIndex = NameIndex.NameIndex(
-    stable_name_index_state,
-    null  // sns_permissions
-  );
-
   // Create SNS permissions wrapper
   var sns_state : SnsPermissions.SnsState = SnsPermissions.from_stable(
     stable_sns_state,
@@ -38,8 +32,9 @@ actor {
   );
   var sns_permissions : SnsPermissions.SnsPermissions = SnsPermissions.SnsPermissions(sns_state);
 
-  // Now update name index with the permissions
-  name_index := NameIndex.NameIndex(
+
+  // Create name index using permissions' dedup
+  var name_index : NameIndex.NameIndex = NameIndex.NameIndex(
     stable_name_index_state,
     ?sns_permissions
   );
@@ -132,13 +127,14 @@ actor {
     permissions.check_permission(caller, permission);
   };
 
+  // add_permission_type should only be called internally by extending code.
   // Permission type management
-  public shared ({ caller }) func add_permission_type(name : Text, description : Text, max_duration : ?Nat64, default_duration : ?Nat64) : async Result.Result<(), Text> {
-    if (not permissions.is_admin(caller)) {
-      return #err("Not authorized");
-    };
-    permissions.add_permission_type(name, description, max_duration, default_duration);
-  };
+  //public shared ({ caller }) func add_permission_type(name : Text, description : Text, max_duration : ?Nat64, default_duration : ?Nat64) : async Result.Result<(), Text> {
+  //  if (not permissions.is_admin(caller)) {
+  //    return #err("Not authorized");
+  //  };
+  //  permissions.add_permission_type(name, description, max_duration, default_duration);
+  //};
 
   system func preupgrade() {
     Timer.cancelTimer(cleanup_timer);  // Only need to cancel the timer
@@ -149,9 +145,6 @@ actor {
     ignore NamePermissions.add_name_permissions(permissions);
     ignore BanPermissions.add_ban_permissions(permissions);
   };
-
-  let nat32Utils = (func (n : Nat32) : Nat32 { n }, Nat32.equal);
-  let textUtils = (Text.hash, Text.equal);
 
   public query func get_principal_name(principal : Principal) : async ?T.Name {
     name_index.get_principal_name(principal);
