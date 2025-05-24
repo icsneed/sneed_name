@@ -41,10 +41,11 @@ actor {
     ?sns_permissions
   );
 
-  // Add permission types
-  ignore NamePermissions.add_name_permissions(permissions);
+  // Add permission types for bans
   ignore BanPermissions.add_ban_permissions(permissions);
-  ignore NameIndex.add_sns_permissions(permissions);
+  
+  // Add permission types for naming
+  ignore NamePermissions.add_name_permissions(permissions);
 
   // Timer for cleaning up expired permissions and bans (runs every hour)
   // NB: We must use <system> tag here because the timer is a system timer
@@ -147,7 +148,6 @@ actor {
     // Re-add permission types after upgrade
     ignore NamePermissions.add_name_permissions(permissions);
     ignore BanPermissions.add_ban_permissions(permissions);
-    ignore NameIndex.add_sns_permissions(permissions);
   };
 
   public query func get_principal_name(principal : Principal) : async ?T.Name {
@@ -301,5 +301,22 @@ actor {
     };
     
     permissions.update_ban_settings(caller, ban_settings);
+  };
+
+  // Banned Word Management
+  public shared ({ caller }) func add_banned_word(word : Text) : async T.NameResult<()> {
+    await* name_index.add_banned_word(caller, word);
+  };
+
+  public shared ({ caller }) func remove_banned_word(word : Text) : async T.NameResult<()> {
+    await* name_index.remove_banned_word(caller, word);
+  };
+
+  public query func is_word_banned(word : Text) : async Bool {
+    name_index.is_word_banned(word);
+  };
+
+  public shared ({ caller }) func get_banned_words() : async T.NameResult<[Text]> {
+    await* name_index.get_banned_words(caller);
   };
 };
