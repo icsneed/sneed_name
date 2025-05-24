@@ -389,8 +389,8 @@ do {
             Lib.SET_SNS_NEURON_NAME_PERMISSION,
             settings
         )) {
-            case (#err(e)) { Debug.trap("Failed to set SNS permission settings: " # e) };
-            case (#ok()) {};
+            case (#Err(e)) { Debug.trap("Failed to set SNS permission settings: " # debug_show(e)) };
+            case (#Ok()) {};
         };
 
         // Test neuron access
@@ -525,8 +525,8 @@ do {
 
         // Add ban permission types
         switch(BanPermissions.add_ban_permissions(permissions)) {
-            case (#err(e)) { Debug.trap("Failed to add ban permissions: " # e) };
-            case (#ok()) {};
+            case (#Err(e)) { Debug.trap("Failed to add ban permissions: " # debug_show(e)) };
+            case (#Ok()) {};
         };
 
         // Set up ban system
@@ -554,9 +554,9 @@ do {
         };
 
         // Test banning a user
-        switch(ban_system.ban_user(user1, user2, ?(24), "Test ban")) {
-            case (#err(e)) { Debug.trap("Failed to ban user: " # e) };
-            case (#ok()) {};
+        switch(ban_system.ban_user(admin1, user2, ?(24), "Test ban")) {
+            case (#Err(e)) { Debug.trap("Failed to ban user: " # debug_show(e)) };
+            case (#Ok()) {};
         };
 
         // Verify user is banned
@@ -564,16 +564,16 @@ do {
 
         // Test ban status check
         switch(ban_system.check_ban_status(user2)) {
-            case (#err(_)) { Debug.trap("Ban status check failed") };
-            case (#ok(msg)) {
+            case (#Err(_)) { Debug.trap("Ban status check failed") };
+            case (#Ok(msg)) {
                 assert(Text.contains(msg, #text "banned"));
             };
         };
 
         // Test ban log
         switch(ban_system.get_ban_log(admin1)) {
-            case (#err(e)) { Debug.trap("Failed to get ban log: " # e) };
-            case (#ok(log)) {
+            case (#Err(e)) { Debug.trap("Failed to get ban log: " # debug_show(e)) };
+            case (#Ok(log)) {
                 assert(log.size() == 1);
                 assert(Principal.equal(log[0].user, user2));
                 assert(Principal.equal(log[0].admin, user1));
@@ -583,8 +583,8 @@ do {
 
         // Test unbanning
         switch(ban_system.unban_user(admin1, user2)) {
-            case (#err(e)) { Debug.trap("Failed to unban user: " # e) };
-            case (#ok()) {};
+            case (#Err(e)) { Debug.trap("Failed to unban user: " # debug_show(e)) };
+            case (#Ok()) {};
         };
 
         // Verify user is no longer banned
@@ -624,12 +624,12 @@ do {
 
         // Add required permission types
         switch(BanPermissions.add_ban_permissions(permissions)) {
-            case (#err(e)) { Debug.trap("Failed to add ban permissions: " # e) };
-            case (#ok()) {};
+            case (#Err(e)) { Debug.trap("Failed to add ban permissions: " # debug_show(e)) };
+            case (#Ok()) {};
         };
         switch(NamePermissions.add_name_permissions(permissions)) {
-            case (#err(e)) { Debug.trap("Failed to add name permissions: " # e) };
-            case (#ok()) {};
+            case (#Err(e)) { Debug.trap("Failed to add name permissions: " # debug_show(e)) };
+            case (#Ok()) {};
         };
 
         // Set up SNS permissions using the same permissions instance (which contains dedup and bans)
