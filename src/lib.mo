@@ -28,6 +28,7 @@ module {
     public let REMOVE_ACCOUNT_NAME_PERMISSION = NamePermissions.REMOVE_ACCOUNT_NAME_PERMISSION;
     public let ADD_BANNED_WORD_PERMISSION = NamePermissions.ADD_BANNED_WORD_PERMISSION;
     public let REMOVE_BANNED_WORD_PERMISSION = NamePermissions.REMOVE_BANNED_WORD_PERMISSION;
+    public let VIEW_BANNED_WORDS_PERMISSION = NamePermissions.VIEW_BANNED_WORDS_PERMISSION;
 
     public func empty_stable() : T.NameIndexState {
         {
@@ -1105,33 +1106,36 @@ module {
             #Ok(());
         };
 
-        public func is_word_banned(word : Text) : Bool {
-            let word_lower = Text.toLowercase(word);
-            switch (Map.get(state.blacklisted_words, textUtils, word_lower)) {
-                case (?_) { true };
-                case null { false };
-            };
-        };
-
         public func get_banned_words(caller : Principal) : async* T.NameResult<[Text]> {
-            // Check if caller has permission to view banned words (either add or remove permission)
+            // Check if caller has permission to view banned words
             switch (permissions) {
                 case (?p) {
-                    let has_add_permission = p.check_permission(caller, ADD_BANNED_WORD_PERMISSION);
-                    let has_remove_permission = p.check_permission(caller, REMOVE_BANNED_WORD_PERMISSION);
-                    let is_admin = p.is_admin(caller);
-                    
-                    if (not (has_add_permission or has_remove_permission or is_admin)) {
-                        return #Err(#NotAuthorized({ required_permission = ?ADD_BANNED_WORD_PERMISSION }));
+                    switch (p.check_permission_detailed(caller, VIEW_BANNED_WORDS_PERMISSION)) {
+                        case (#Allowed) {};
+                        case (#Banned(reason)) {
+                            return #Err(#Banned({ reason = reason.reason; expires_at = reason.expires_at }));
+                        };
+                        case _ {
+                            return #Err(#NotAuthorized({ required_permission = ?VIEW_BANNED_WORDS_PERMISSION }));
+                        };
                     };
                 };
                 case null {
-                    return #Err(#NotAuthorized({ required_permission = ?ADD_BANNED_WORD_PERMISSION }));
+                    return #Err(#NotAuthorized({ required_permission = ?VIEW_BANNED_WORDS_PERMISSION }));
                 };
             };
 
             let words = Map.keys(state.blacklisted_words);
             #Ok(Iter.toArray(words));
+        };
+
+        // Private helper function to check if a word is banned (used internally)
+        private func is_word_banned(word : Text) : Bool {
+            let word_lower = Text.toLowercase(word);
+            switch (Map.get(state.blacklisted_words, textUtils, word_lower)) {
+                case (?_) { true };
+                case null { false };
+            };
         };
 
         // Helper function to check if a name contains banned words and auto-ban if needed

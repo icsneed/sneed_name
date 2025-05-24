@@ -24,6 +24,7 @@ module NamePermissions {
     // Banned word management permission constants
     public let ADD_BANNED_WORD_PERMISSION = "add_banned_word";
     public let REMOVE_BANNED_WORD_PERMISSION = "remove_banned_word";
+    public let VIEW_BANNED_WORDS_PERMISSION = "view_banned_words";
 
     public func add_name_permissions(
         permissions : Permissions.PermissionsManager
@@ -180,6 +181,18 @@ module NamePermissions {
             ?(30 * 24 * 60 * 60 * 1_000_000_000)    // 30 days default
         );
         switch(remove_banned_word_result) {
+            case (#Err(e)) { return #Err(e) };
+            case (#Ok()) {};
+        };
+
+        // Add permission type for viewing banned words
+        let view_banned_words_result = permissions.add_permission_type(
+            VIEW_BANNED_WORDS_PERMISSION,
+            "Permission to view the list of banned words",
+            ?(365 * 24 * 60 * 60 * 1_000_000_000),  // 1 year max
+            ?(30 * 24 * 60 * 60 * 1_000_000_000)    // 30 days default
+        );
+        switch(view_banned_words_result) {
             case (#Err(e)) { return #Err(e) };
             case (#Ok()) {};
         };

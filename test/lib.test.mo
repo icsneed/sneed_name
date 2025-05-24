@@ -1223,6 +1223,12 @@ do {
             case (#Ok()) {};
         };
 
+        // Grant view banned words permission to admin1 for testing
+        switch(permissions.grant_permission(admin1, admin1, NamePermissions.VIEW_BANNED_WORDS_PERMISSION, null)) {
+            case (#Err(e)) { Debug.trap("Failed to grant view banned words permission: " # debug_show(e)) };
+            case (#Ok()) {};
+        };
+
         // Test adding banned words
         switch(await* name_index.add_banned_word(admin1, "BadWord")) {
             case (#Err(e)) { Debug.trap("Failed to add banned word: " # debug_show(e)) };
@@ -1234,11 +1240,34 @@ do {
             case (#Ok()) {};
         };
 
-        // Test checking if words are banned
-        assert(name_index.is_word_banned("badword") == true);  // Case insensitive
-        assert(name_index.is_word_banned("BADWORD") == true);
-        assert(name_index.is_word_banned("spam") == true);
-        assert(name_index.is_word_banned("goodword") == false);
+        // Test checking if words are banned by trying to set names with them
+        switch(await* name_index.set_principal_name(user1, user1, "badword")) {
+            case (#Err(#BannedWord(info))) { 
+                assert(info.word == "badword");
+            };
+            case (#Err(e)) { Debug.trap("Expected BannedWord error for 'badword', got: " # debug_show(e)) };
+            case (#Ok()) { Debug.trap("Should not be able to set 'badword' as name") };
+        };
+
+        switch(await* name_index.set_principal_name(user2, user2, "BADWORD")) {
+            case (#Err(#BannedWord(info))) { 
+                assert(info.word == "BADWORD");  // Should return the original name when exact match
+            };
+            case (#Err(e)) { Debug.trap("Expected BannedWord error for 'BADWORD', got: " # debug_show(e)) };
+            case (#Ok()) { Debug.trap("Should not be able to set 'BADWORD' as name") };
+        };
+
+        // Test that non-banned words work
+        switch(await* name_index.set_principal_name(user1, user1, "goodword")) {
+            case (#Err(e)) { Debug.trap("Failed to set non-banned word: " # debug_show(e)) };
+            case (#Ok()) {};
+        };
+
+        // Clean up the good word for later tests
+        switch(await* name_index.set_principal_name(user1, user1, "testuser1")) {
+            case (#Err(e)) { Debug.trap("Failed to set test name: " # debug_show(e)) };
+            case (#Ok()) {};
+        };
 
         // Test getting banned words list
         switch(await* name_index.get_banned_words(admin1)) {
@@ -1249,15 +1278,6 @@ do {
                 assert(Array.find<Text>(words, func(w) = w == "badword") != null);
                 assert(Array.find<Text>(words, func(w) = w == "spam") != null);
             };
-        };
-
-        // Test that using banned words results in BannedWord error and auto-ban
-        switch(await* name_index.set_principal_name(user1, user1, "badword")) {
-            case (#Err(#BannedWord(info))) { 
-                assert(info.word == "badword");
-            };
-            case (#Err(e)) { Debug.trap("Expected BannedWord error, got: " # debug_show(e)) };
-            case (#Ok()) { Debug.trap("Should not be able to set banned word as name") };
         };
 
         // Test that using banned words as substring also triggers ban
@@ -1275,9 +1295,20 @@ do {
             case (#Ok()) {};
         };
 
-        // Verify word is no longer banned
-        assert(name_index.is_word_banned("badword") == false);
-        assert(name_index.is_word_banned("spam") == true);  // Other word still banned
+        // Test that removed word is no longer banned
+        switch(await* name_index.set_principal_name(user1, user1, "badword")) {
+            case (#Err(e)) { Debug.trap("Word should no longer be banned: " # debug_show(e)) };
+            case (#Ok()) {};
+        };
+
+        // Test that other banned word still works
+        switch(await* name_index.set_principal_name(user2, user2, "spam")) {
+            case (#Err(#BannedWord(info))) { 
+                assert(info.word == "spam");
+            };
+            case (#Err(e)) { Debug.trap("Expected BannedWord error for 'spam', got: " # debug_show(e)) };
+            case (#Ok()) { Debug.trap("Should not be able to set 'spam' as name") };
+        };
 
         // Test that non-authorized users cannot manage banned words
         switch(await* name_index.add_banned_word(user1, "newbadword")) {
@@ -1294,6 +1325,15 @@ do {
             };
             case (#Err(e)) { Debug.trap("Expected NotAuthorized error, got: " # debug_show(e)) };
             case (#Ok()) { Debug.trap("Non-authorized user should not be able to remove banned words") };
+        };
+
+        // Test that non-authorized users cannot view banned words
+        switch(await* name_index.get_banned_words(user1)) {
+            case (#Err(#NotAuthorized(info))) { 
+                assert(info.required_permission == ?NamePermissions.VIEW_BANNED_WORDS_PERMISSION);
+            };
+            case (#Err(e)) { Debug.trap("Expected NotAuthorized error for viewing banned words, got: " # debug_show(e)) };
+            case (#Ok(_)) { Debug.trap("Non-authorized user should not be able to view banned words") };
         };
 
         Debug.print("✓ Banned words tests passed");
