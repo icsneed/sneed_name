@@ -1,4 +1,4 @@
-import Lib "../src/lib";
+import Result "mo:base/Result";
 import Blob "mo:base/Blob";
 import Principal "mo:base/Principal";
 import Debug "mo:base/Debug";
@@ -14,6 +14,7 @@ import T "../src/Types";
 import Bans "../src/Bans";
 import BanPermissions "../src/BanPermissions";
 import NamePermissions "../src/sneed_name/NamePermissions";
+import Lib "../src/lib";
 
 // Mock SNS governance canister
 actor class MockSnsGovernance() {
@@ -311,9 +312,7 @@ do {
         // Set up SNS permissions
         let sns_state = SnsPermissions.from_stable(
             SnsPermissions.empty_stable(),
-            permissions,
-            state.dedup,
-            ban_system
+            permissions
         );
         let sns_permissions = SnsPermissions.SnsPermissions(sns_state);
 
@@ -321,7 +320,7 @@ do {
         let mock_governance = await MockSnsGovernance();
 
         // Set up name index
-        let name_state = Lib.empty();
+        let name_state = Lib.empty_stable();
         let name_index = Lib.NameIndex(name_state, ?sns_permissions);
 
         // Test setting SNS permission settings
@@ -382,7 +381,7 @@ do {
         let permissions = Permissions.PermissionsManager(state);
 
         // Set up name index
-        let name_state = Lib.empty();
+        let name_state = Lib.empty_stable();
         let name_index = Lib.NameIndex(name_state, null);  // No SNS permissions needed
 
         // Test setting principal name
@@ -537,22 +536,15 @@ do {
             permissions.check_permission(p, perm)
         });
 
-        // Set ban checker in permissions
-        permissions.set_ban_checker(func(p: Principal) : Bool {
-            ban_system.is_banned(p)
-        });
-
         // Set up SNS permissions with ban integration
         let sns_state = SnsPermissions.from_stable(
             SnsPermissions.empty_stable(),
-            permissions,
-            state.dedup,
-            ban_system
+            permissions
         );
         let sns_permissions = SnsPermissions.SnsPermissions(sns_state);
 
         // Set up name index
-        let name_state = Lib.empty();
+        let name_state = Lib.empty_stable();
         let name_index = Lib.NameIndex(name_state, ?sns_permissions);
 
         // Grant permissions to user1
