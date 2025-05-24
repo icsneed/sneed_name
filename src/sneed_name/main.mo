@@ -11,6 +11,7 @@ import SnsPermissions "../SnsPermissions";
 import Bans "../Bans";
 import BanPermissions "../BanPermissions";
 import Vector "mo:vector";
+import Dedup "mo:dedup";
 
 actor {
   // Stable state
@@ -18,24 +19,23 @@ actor {
   stable var stable_sns_state : SnsPermissions.StableSnsState = SnsPermissions.empty_stable();
   stable var name_index_state : T.NameIndexState = NameIndex.empty();
 
-  // Create name index first since we need its dedup
-  var name_index : NameIndex.NameIndex = NameIndex.NameIndex(
-    name_index_state,  // from
-    null  // sns_permissions
-  );  // Pass null for permissions initially
-  
-  // Create permissions using the dedup
+  // Create permissions first since we need its dedup
   var permission_state : Permissions.PermissionState = Permissions.from_stable(
-    stable_permission_state, 
-    name_index.get_dedup()
+    stable_permission_state
   );
   var permissions : Permissions.PermissionsManager = Permissions.PermissionsManager(permission_state);
 
+  // Create name index using permissions' dedup
+  var name_index : NameIndex.NameIndex = NameIndex.NameIndex(
+    name_index_state,
+    null  // sns_permissions
+  );
+
   // Create SNS permissions wrapper
   var sns_state : SnsPermissions.SnsState = SnsPermissions.from_stable(
-    stable_sns_state, 
-    permissions, 
-    name_index.get_dedup()
+    stable_sns_state,
+    permissions,
+    permissions.get_dedup()
   );
   var sns_permissions : SnsPermissions.SnsPermissions = SnsPermissions.SnsPermissions(sns_state);
 

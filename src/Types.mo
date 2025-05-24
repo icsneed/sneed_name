@@ -12,7 +12,6 @@ module {
     };
 
     public type NameIndexState = {
-        dedup_state : ?Dedup.DedupState;
         name_to_index : Map.Map<Nat32, Name>;
         index_to_name : Map.Map<Text, Nat32>;
         blacklisted_words : Map.Map<Text, Name>;

@@ -69,6 +69,7 @@ module Permissions {
         var admins : Map.Map<Nat32, PermissionMetadata>;  // Admin index -> Metadata
         var principal_permissions : Map.Map<Nat32, Map.Map<Nat32, PermissionMetadata>>;  // Principal index -> Permission index -> Metadata
         var ban_state : BanState;  // Ban system state
+        var dedup_state : ?Dedup.DedupState;  // Dedup state for stable storage
     };
 
     // Non-stable state includes permission types that are registered on start
@@ -131,6 +132,7 @@ module Permissions {
                     duration_settings = default_settings;
                 };
             };
+            var dedup_state = ?Dedup.empty();
         };
     };
 
@@ -155,12 +157,12 @@ module Permissions {
         };
     };
 
-    public func from_stable(stable_state : StablePermissionState, dedup : Dedup.Dedup) : PermissionState {
+    public func from_stable(stable_state : StablePermissionState) : PermissionState {
         {
             admins = stable_state.admins;
             principal_permissions = stable_state.principal_permissions;
             var permission_types = Map.new<Nat32, PermissionType>();
-            dedup = dedup;
+            dedup = Dedup.Dedup(stable_state.dedup_state);
             ban_state = stable_state.ban_state;
         };
     };
@@ -410,6 +412,11 @@ module Permissions {
 
     public class PermissionsManager(state : PermissionState) {
         let nat32Utils = (func (n : Nat32) : Nat32 { n }, Nat32.equal);
+
+        // Expose dedup instance for other services to use
+        public func get_dedup() : Dedup.Dedup {
+            state.dedup
+        };
 
         // Helper to calculate ban duration based on offense count
         private func calculate_ban_duration(user: Nat32) : Nat {

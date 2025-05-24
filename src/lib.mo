@@ -20,7 +20,6 @@ module {
 
     public func empty() : T.NameIndexState {
         {
-            dedup_state = ?Dedup.empty();
             name_to_index = Map.new<Nat32, T.Name>();
             index_to_name = Map.new<Text, Nat32>();
             blacklisted_words = Map.new<Text, T.Name>();
@@ -32,10 +31,13 @@ module {
         sns_permissions: ?SnsPermissions.SnsPermissions
     ) {
         private let state = from;
-        let dedup = Dedup.Dedup(state.dedup_state);
         private let permissions = switch (sns_permissions) {
             case (?sp) { ?sp.get_permissions() };
             case null { null };
+        };
+        private let dedup = switch (permissions) {
+            case (?p) { p.get_dedup() };
+            case null { Dedup.Dedup(?Dedup.empty()) };  // Create new dedup instance if no permissions
         };
 
         let nat32Utils = (func (n : Nat32) : Nat32 { n }, Nat32.equal);
