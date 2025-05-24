@@ -312,10 +312,6 @@ actor {
     await* name_index.remove_banned_word(caller, word);
   };
 
-  public query func is_word_banned(word : Text) : async Bool {
-    name_index.is_word_banned(word);
-  };
-
   public shared ({ caller }) func get_banned_words() : async T.NameResult<[Text]> {
     await* name_index.get_banned_words(caller);
   };
