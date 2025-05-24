@@ -95,9 +95,12 @@ do {
             case (#Ok()) {};
         };
 
-        // Test that non-admin cannot add admin
+        // Test that non-admin cannot add admin - expect specific NotAuthorized error
         switch(await permissions.add_admin(user2, user2, null)) {
-            case (#Err(_)) {}; // Expected error
+            case (#Err(#NotAuthorized(info))) { 
+                assert(info.required_permission == Permissions.ADD_ADMIN_PERMISSION);
+            };
+            case (#Err(e)) { Debug.trap("Expected NotAuthorized error, got: " # debug_show(e)) };
             case (#Ok()) { Debug.trap("Non-admin was able to add admin") };
         };
 
@@ -107,10 +110,29 @@ do {
             case (#Ok()) {};
         };
 
-        // Test that removed admin cannot add new admin
+        // Test that removed admin cannot add new admin - expect specific NotAuthorized error
         switch(await permissions.add_admin(user1, user2, null)) {
-            case (#Err(_)) {}; // Expected error
+            case (#Err(#NotAuthorized(info))) { 
+                assert(info.required_permission == Permissions.ADD_ADMIN_PERMISSION);
+            };
+            case (#Err(e)) { Debug.trap("Expected NotAuthorized error, got: " # debug_show(e)) };
             case (#Ok()) { Debug.trap("Removed admin was able to add new admin") };
+        };
+
+        // Test trying to remove self - expect CannotRemoveSelf error
+        switch(await permissions.remove_admin(admin1, admin1)) {
+            case (#Err(#CannotRemoveSelf)) {}; // Expected
+            case (#Err(e)) { Debug.trap("Expected CannotRemoveSelf error, got: " # debug_show(e)) };
+            case (#Ok()) { Debug.trap("Should not be able to remove self") };
+        };
+
+        // Test adding duplicate admin - expect AlreadyAdmin error
+        switch(await permissions.add_admin(admin1, admin2, null)) {
+            case (#Err(#AlreadyAdmin(info))) { 
+                assert(Principal.equal(info.principal, admin2));
+            };
+            case (#Err(e)) { Debug.trap("Expected AlreadyAdmin error, got: " # debug_show(e)) };
+            case (#Ok()) { Debug.trap("Should not be able to add existing admin") };
         };
 
         Debug.print("✓ Admin management tests passed");
@@ -161,7 +183,10 @@ do {
             null,
             null
         )) {
-            case (#Err(_)) {}; // Expected error
+            case (#Err(#PermissionTypeExists(info))) { 
+                assert(info.permission == TEST_PERMISSION);
+            };
+            case (#Err(e)) { Debug.trap("Expected PermissionTypeExists error, got: " # debug_show(e)) };
             case (#Ok()) { Debug.trap("Was able to add duplicate permission type") };
         };
 
@@ -439,9 +464,30 @@ do {
         assert(name_index.is_name_taken("test-user") == true);
         assert(name_index.is_name_taken("nonexistent") == false);
 
-        // Test setting name for another principal (should fail)
+        // Test anonymous caller - expect AnonymousCaller error
+        let anonymous = Principal.fromText("2vxsx-fae");  // Anonymous principal
+        switch(await* name_index.set_principal_name(anonymous, anonymous, "anon-name")) {
+            case (#Err(#AnonymousCaller)) {}; // Expected
+            case (#Err(e)) { Debug.trap("Expected AnonymousCaller error, got: " # debug_show(e)) };
+            case (#Ok()) { Debug.trap("Anonymous caller should not be able to set names") };
+        };
+
+        // Test setting duplicate name - expect NameAlreadyTaken error
+        switch(await* name_index.set_principal_name(user2, user2, "test-user")) {
+            case (#Err(#NameAlreadyTaken(info))) { 
+                assert(info.name == "test-user");
+                assert(info.taken_by == ?user1);
+            };
+            case (#Err(e)) { Debug.trap("Expected NameAlreadyTaken error, got: " # debug_show(e)) };
+            case (#Ok()) { Debug.trap("Should not be able to set duplicate name") };
+        };
+
+        // Test setting name for another principal (should fail) - expect NotAuthorized error
         switch(await* name_index.set_principal_name(user2, user1, "another-name")) {
-            case (#Err(_)) {}; // Expected error
+            case (#Err(#NotAuthorized(info))) { 
+                assert(info.required_permission == ?NamePermissions.EDIT_ANY_NAME);
+            };
+            case (#Err(e)) { Debug.trap("Expected NotAuthorized error, got: " # debug_show(e)) };
             case (#Ok()) { Debug.trap("Should not be able to set name for another principal") };
         };
 
@@ -621,16 +667,20 @@ do {
             case (#Ok()) {};
         };
 
-        // Verify banned user1 cannot set names despite having permission
+        // Verify banned user1 cannot set names despite having permission - expect Banned error
         switch(await* name_index.set_principal_name(user1, user2, "another-name")) {
-            case (#Err(_)) {}; // Expected error
+            case (#Err(#Banned(info))) { 
+                assert(Text.contains(info.reason, #text "banned"));
+                assert(info.expires_at != null);
+            };
+            case (#Err(e)) { Debug.trap("Expected Banned error, got: " # debug_show(e)) };
             case (#Ok()) { Debug.trap("Banned user should not be able to set names") };
         };
 
         // Create mock SNS governance
         let mock_governance = await MockSnsGovernance();
 
-        // Test that banned user cannot use SNS permissions
+        // Test that banned user cannot use SNS permissions - expect Banned error
         let test_neuron_id = { id = Text.encodeUtf8("neuron1") };
         switch(await* name_index.set_sns_neuron_name(
             user1,
@@ -638,7 +688,11 @@ do {
             "test-neuron",
             mock_governance
         )) {
-            case (#Err(_)) {}; // Expected error
+            case (#Err(#Banned(info))) { 
+                assert(Text.contains(info.reason, #text "banned"));
+                assert(info.expires_at != null);
+            };
+            case (#Err(e)) { Debug.trap("Expected Banned error, got: " # debug_show(e)) };
             case (#Ok()) { Debug.trap("Banned user should not be able to set neuron names") };
         };
 

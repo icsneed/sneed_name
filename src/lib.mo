@@ -77,10 +77,11 @@ module {
                 // Check if user is banned to provide specific error
                 switch (permissions) {
                     case (?p) {
-                        if (p.is_banned(caller)) {
-                            let user_index = p.get_dedup().getOrCreateIndexForPrincipal(caller);
-                            // We need to access the ban state to get expiry time
-                            return #Err(#Banned({ reason = "User is currently banned"; expires_at = null }));
+                        switch (p.check_permission_detailed(caller, NamePermissions.EDIT_ANY_NAME)) {
+                            case (#Banned(reason)) {
+                                return #Err(#Banned({ reason = reason.reason; expires_at = reason.expires_at }));
+                            };
+                            case _ {};
                         };
                     };
                     case null {};
