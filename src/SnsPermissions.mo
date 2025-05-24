@@ -27,12 +27,10 @@ module {
     // Stable state for SNS-specific settings
     public type StableSnsState = {
         var permission_settings : Map.Map<Nat32, Map.Map<Nat32, SnsPermissionSettings>>;  // SNS governance index -> (Permission index -> Settings)
-        var neuron_names : Map.Map<Nat32, T.Name>;  // Neuron ID index -> Name
     };
 
     public type SnsState = {
         permission_settings : Map.Map<Nat32, Map.Map<Nat32, SnsPermissionSettings>>;
-        neuron_names : Map.Map<Nat32, T.Name>;
         permissions : Permissions.PermissionsManager;
         dedup : Dedup.Dedup;
     };
@@ -40,7 +38,6 @@ module {
     public func empty_stable() : StableSnsState {
         {
             var permission_settings = Map.new<Nat32, Map.Map<Nat32, SnsPermissionSettings>>();
-            var neuron_names = Map.new<Nat32, T.Name>();
         }
     };
 
@@ -51,10 +48,9 @@ module {
     ) : SnsState {
         {
             permission_settings = stable_state.permission_settings;
-            neuron_names = stable_state.neuron_names;
             permissions = permissions;
             dedup = dedup;
-        }
+        };
     };
 
     public type DissolveState = {

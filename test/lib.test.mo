@@ -1,4 +1,4 @@
-import Dedup "../src/lib";
+import Lib "../src/lib";
 import Blob "mo:base/Blob";
 import Principal "mo:base/Principal";
 import Debug "mo:base/Debug";
@@ -9,6 +9,37 @@ import Permissions "../src/Permissions";
 import Time "mo:base/Time";
 import Nat64 "mo:base/Nat64";
 import Nat32 "mo:base/Nat32";
+import SnsPermissions "../src/SnsPermissions";
+import T "../src/Types";
+
+// Mock SNS governance canister
+actor class MockSnsGovernance() {
+    public shared query func list_neurons(caller : Principal) : async [SnsPermissions.Neuron] {
+        // Return test neurons where caller has hotkey access
+        let neuron1 : SnsPermissions.Neuron = {
+            id = ?{ id = Text.encodeUtf8("neuron1") };
+            permissions = [{
+                principal = ?caller;
+                permission_type = [1, 2, 3];  // Some test permissions
+            }];
+            cached_neuron_stake_e8s = 100_000_000;  // 1 token
+            voting_power_percentage_multiplier = 100;  // 1x multiplier
+            // Required fields with default values
+            staked_maturity_e8s_equivalent = null;
+            maturity_e8s_equivalent = 0;
+            created_timestamp_seconds = 0;
+            source_nns_neuron_id = null;
+            auto_stake_maturity = null;
+            aging_since_timestamp_seconds = 0;
+            dissolve_state = null;
+            vesting_period_seconds = null;
+            disburse_maturity_in_progress = [];
+            followees = [];
+            neuron_fees_e8s = 0;
+        };
+        [neuron1]
+    };
+};
 
 // Test static methods
 do {
@@ -28,7 +59,9 @@ do {
         await test_permission_types();
         await test_permission_checking();
         await test_non_admin_permissions();
-        Debug.print("All permission tests passed! 🎉");
+        await test_sns_permissions();
+        await test_name_management();
+        Debug.print("All tests passed! 🎉");
     };
 
     // Test admin management functionality
@@ -249,6 +282,132 @@ do {
         };
 
         Debug.print("✓ Non-admin permission management tests passed");
+    };
+
+    // Test SNS permissions functionality
+    shared func test_sns_permissions() : async () {
+        Debug.print("Testing SNS permissions...");
+
+        // Set up base permissions
+        let state = Permissions.empty();
+        let admin_metadata : Permissions.PermissionMetadata = {
+            created_by = admin1;
+            created_at = Nat64.fromIntWrap(Time.now());
+            expires_at = null;
+        };
+        let admin1_index = state.dedup.getOrCreateIndexForPrincipal(admin1);
+        Map.set(state.admins, (func (n : Nat32) : Nat32 { n }, Nat32.equal), admin1_index, admin_metadata);
+        let permissions = Permissions.PermissionsManager(state);
+
+        // Set up SNS permissions
+        let sns_state = SnsPermissions.from_stable(
+            SnsPermissions.empty_stable(),
+            permissions,
+            state.dedup
+        );
+        let sns_permissions = SnsPermissions.SnsPermissions(sns_state);
+
+        // Create mock SNS governance canister
+        let mock_governance = await MockSnsGovernance();
+
+        // Set up name index
+        let name_state = Lib.empty();
+        let name_index = Lib.NameIndex(name_state, ?sns_permissions, ?mock_governance);
+
+        // Test setting SNS permission settings
+        let settings : SnsPermissions.SnsPermissionSettings = {
+            min_voting_power = 50_000_000;  // 0.5 tokens
+            max_duration = ?(30 * 24 * 60 * 60 * 1_000_000_000);  // 30 days
+            default_duration = ?(24 * 60 * 60 * 1_000_000_000);  // 1 day
+        };
+
+        switch(sns_permissions.set_permission_settings(
+            admin1,
+            Principal.fromActor(mock_governance),
+            Lib.SET_SNS_NEURON_NAME_PERMISSION,
+            settings
+        )) {
+            case (#err(e)) { Debug.trap("Failed to set SNS permission settings: " # e) };
+            case (#ok()) {};
+        };
+
+        // Test neuron access
+        let test_neuron_id = { id = Text.encodeUtf8("neuron1") };
+        let has_access = await sns_permissions.has_neuron_access(
+            user1,
+            test_neuron_id,
+            mock_governance
+        );
+        assert(has_access == true);
+
+        // Test setting neuron name
+        switch(await* name_index.set_sns_neuron_name(
+            user1,
+            test_neuron_id,
+            "test-neuron"
+        )) {
+            case (#err(e)) { Debug.trap("Failed to set neuron name: " # e) };
+            case (#ok()) {};
+        };
+
+        // Verify neuron name was set
+        switch(name_index.get_sns_neuron_name(test_neuron_id)) {
+            case null { Debug.trap("Neuron name not found") };
+            case (?name) {
+                assert(name.name == "test-neuron");
+                assert(name.created_by == user1);
+            };
+        };
+
+        Debug.print("✓ SNS permissions tests passed");
+    };
+
+    // Test name management functionality
+    shared func test_name_management() : async () {
+        Debug.print("Testing name management...");
+
+        // Set up base permissions
+        let state = Permissions.empty();
+        let permissions = Permissions.PermissionsManager(state);
+
+        // Set up name index
+        let name_state = Lib.empty();
+        let name_index = Lib.NameIndex(name_state, null, null);
+
+        // Test setting principal name
+        switch(await* name_index.set_principal_name(user1, user1, "test-user")) {
+            case (#err(e)) { Debug.trap("Failed to set principal name: " # e) };
+            case (#ok()) {};
+        };
+
+        // Verify principal name was set
+        switch(name_index.get_principal_name(user1)) {
+            case null { Debug.trap("Principal name not found") };
+            case (?name) {
+                assert(name.name == "test-user");
+                assert(name.created_by == user1);
+            };
+        };
+
+        // Test name lookup
+        switch(name_index.get_name_principal("test-user")) {
+            case null { Debug.trap("Principal not found by name") };
+            case (?p) {
+                assert(Principal.equal(p, user1));
+            };
+        };
+
+        // Test name taken check
+        assert(name_index.is_name_taken("test-user") == true);
+        assert(name_index.is_name_taken("nonexistent") == false);
+
+        // Test setting name for another principal (should fail)
+        switch(await* name_index.set_principal_name(user2, user1, "another-name")) {
+            case (#err(_)) {}; // Expected error
+            case (#ok()) { Debug.trap("Should not be able to set name for another principal") };
+        };
+
+        Debug.print("✓ Name management tests passed");
     };
 
     run_tests();
