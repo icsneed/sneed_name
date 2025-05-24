@@ -10,8 +10,6 @@ import Nat64 "mo:base/Nat64";
 import Text "mo:base/Text";
 import Buffer "mo:base/Buffer";
 import Dedup "mo:dedup";
-import Permissions "./Permissions";
-import BanPermissions "./BanPermissions";
 
 module {
     public type BanLogEntry = {
@@ -63,7 +61,10 @@ module {
         }
     };
 
-    public class Bans(state: BanState, dedup: Dedup.Dedup, permissions: Permissions.PermissionsManager) {
+    // Type for permission checking function
+    public type PermissionChecker = (Principal, Text) -> Bool;
+
+    public class Bans(state: BanState, dedup: Dedup.Dedup, check_permission: PermissionChecker) {
         let nat32Utils = (func (n : Nat32) : Nat32 { n }, Nat32.equal);
 
         // Helper to calculate ban duration based on offense count
@@ -124,12 +125,12 @@ module {
                 return #err("Anonymous caller");
             };
 
-            if (not permissions.check_permission(caller, BanPermissions.BAN_USER)) {
+            if (not check_permission(caller, "ban_user")) {
                 return #err("Not authorized to ban users");
             };
 
             // Cannot ban admins
-            if (Principal.isController(user) or permissions.is_admin(user)) {
+            if (Principal.isController(user) or check_permission(user, "add_admin")) {
                 return #err("Cannot ban admins");
             };
 
@@ -169,7 +170,7 @@ module {
                 return #err("Cannot ban anonymous user");
             };
 
-            if (Principal.isController(user) or permissions.is_admin(user)) {
+            if (Principal.isController(user) or check_permission(user, "add_admin")) {
                 return #err("Cannot ban admins");
             };
 
@@ -200,7 +201,7 @@ module {
                 return #err("Anonymous caller");
             };
 
-            if (not permissions.check_permission(caller, BanPermissions.UNBAN_USER)) {
+            if (not check_permission(caller, "unban_user")) {
                 return #err("Not authorized to unban users");
             };
 
@@ -242,14 +243,14 @@ module {
         };
 
         // Get ban log with converted principals
-        public func get_ban_log() : Result.Result<[{
+        public func get_ban_log(caller: Principal) : Result.Result<[{
             user: Principal;
             admin: Principal;
             ban_timestamp: Int;
             expiry_timestamp: Int;
             reason: Text;
         }], Text> {
-            if (not permissions.is_admin(caller)) {
+            if (not check_permission(caller, "manage_ban_settings")) {
                 return #err("Not authorized to view ban log");
             };
 
@@ -297,8 +298,8 @@ module {
         };
 
         // Get currently banned users
-        public func get_banned_users() : Result.Result<[(Principal, Int)], Text> {
-            if (not permissions.is_admin(caller)) {
+        public func get_banned_users(caller: Principal) : Result.Result<[(Principal, Int)], Text> {
+            if (not check_permission(caller, "manage_ban_settings")) {
                 return #err("Not authorized to view banned users");
             };
 
@@ -332,7 +333,7 @@ module {
             expiry_timestamp: Int;
             reason: Text;
         }], Text> {
-            if (not permissions.is_admin(caller)) {
+            if (not check_permission(caller, "manage_ban_settings")) {
                 return #err("Not authorized to view ban history");
             };
 
@@ -379,7 +380,7 @@ module {
             caller: Principal,
             settings: BanSettings
         ) : Result.Result<(), Text> {
-            if (not permissions.check_permission(caller, BanPermissions.MANAGE_BAN_SETTINGS)) {
+            if (not check_permission(caller, "manage_ban_settings")) {
                 return #err("Not authorized to manage ban settings");
             };
 

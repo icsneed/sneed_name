@@ -22,14 +22,21 @@ actor {
   var name_index : NameIndex.NameIndex = NameIndex.NameIndex(name_index_state, null);  // Pass null for permissions initially
   
   // Create ban system with dedup
-  var ban_system = Bans.Bans(ban_state, name_index.get_dedup(), null);  // Pass null for permissions initially
+  var ban_system = Bans.Bans(ban_state, name_index.get_dedup(), func(p: Principal, perm: Text) : Bool { false });  // Pass dummy permission checker initially
   
-  // Now create permissions using the same dedup and ban system
-  var permission_state : Permissions.PermissionState = Permissions.from_stable(stable_permission_state, name_index.get_dedup(), ban_system);
+  // Now create permissions using the same dedup
+  var permission_state : Permissions.PermissionState = Permissions.from_stable(stable_permission_state, name_index.get_dedup());
   var permissions : Permissions.PermissionsManager = Permissions.PermissionsManager(permission_state);
 
-  // Update ban system with permissions
-  ban_system := Bans.Bans(ban_state, name_index.get_dedup(), ?permissions);
+  // Update ban system with real permission checker
+  ban_system := Bans.Bans(ban_state, name_index.get_dedup(), func(p: Principal, perm: Text) : Bool {
+    permissions.check_permission(p, perm)
+  });
+
+  // Set ban checker in permissions
+  permissions.set_ban_checker(func(p: Principal) : Bool {
+    ban_system.is_banned(p)
+  });
 
   // Create SNS permissions wrapper
   var sns_state : SnsPermissions.SnsState = SnsPermissions.from_stable(stable_sns_state, permissions, name_index.get_dedup());

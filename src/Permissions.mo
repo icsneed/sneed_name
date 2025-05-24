@@ -11,6 +11,8 @@ import Bans "./Bans";
 
 // We need module name "Permissions" to allow class methods to refer to them when they would otherwise have a name conflict.
 module Permissions {
+    public type BanChecker = Principal -> Bool;
+
     public type PermissionMetadata = {
         created_by : Principal;
         created_at : Nat64;
@@ -35,7 +37,7 @@ module Permissions {
         principal_permissions : Map.Map<Nat32, Map.Map<Nat32, PermissionMetadata>>;  // Principal index -> Permission index -> Metadata
         var permission_types : Map.Map<Nat32, PermissionType>;  // Permission index -> Type info
         dedup : Dedup.Dedup;  // For principal -> index and text -> index conversion
-        bans : Bans.Bans;     // Ban system for checking if users are banned
+        var ban_checker : ?BanChecker;  // Optional function to check if users are banned
     };
 
     // Built-in permission type keys
@@ -50,13 +52,12 @@ module Permissions {
 
     public func empty() : PermissionState {
         let dedup = Dedup.Dedup(?Dedup.empty());
-        let ban_state = Bans.empty();
         let state = {
             admins = Map.new<Nat32, PermissionMetadata>();
             principal_permissions = Map.new<Nat32, Map.Map<Nat32, PermissionMetadata>>();
             var permission_types = Map.new<Nat32, PermissionType>();
             dedup = dedup;
-            bans = Bans.Bans(ban_state, dedup, null);  // Pass null for permissions to avoid circular dependency
+            var ban_checker = null;
         };
 
         // Add built-in permission types
@@ -87,14 +88,14 @@ module Permissions {
         }
     };
 
-    // Create new state with existing dedup and ban system
-    public func from_dedup(dedup : Dedup.Dedup, bans : Bans.Bans) : PermissionState {
+    // Create new state with existing dedup
+    public func from_dedup(dedup : Dedup.Dedup) : PermissionState {
         let state = {
             admins = Map.new<Nat32, PermissionMetadata>();
             principal_permissions = Map.new<Nat32, Map.Map<Nat32, PermissionMetadata>>();
             var permission_types = Map.new<Nat32, PermissionType>();
             dedup = dedup;
-            bans = bans;
+            var ban_checker = null;
         };
 
         // Add built-in permission types
@@ -118,14 +119,14 @@ module Permissions {
         state
     };
 
-    // Create a new PermissionState from stable state, using provided dedup and ban system
-    public func from_stable(stable_state : StablePermissionState, dedup : Dedup.Dedup, bans : Bans.Bans) : PermissionState {
+    // Create a new PermissionState from stable state, using provided dedup
+    public func from_stable(stable_state : StablePermissionState, dedup : Dedup.Dedup) : PermissionState {
         let state = {
             admins = stable_state.admins;
             principal_permissions = stable_state.principal_permissions;
             var permission_types = Map.new<Nat32, PermissionType>();
             dedup = dedup;
-            bans = bans;
+            var ban_checker = null;
         };
 
         // Re-add built-in permission types
@@ -154,9 +155,14 @@ module Permissions {
             return true;
         };
 
-        // Check if user is banned first
-        if (state.bans.is_banned(principal)) {
-            return false;
+        // Check if user is banned first if we have a ban checker
+        switch (state.ban_checker) {
+            case (?check_banned) {
+                if (check_banned(principal)) {
+                    return false;
+                };
+            };
+            case null {};
         };
 
         let index = state.dedup.getOrCreateIndexForPrincipal(principal);
@@ -176,9 +182,14 @@ module Permissions {
     };
 
     public func check_permission(principal : Principal, permission : Text, state : PermissionState) : Bool {
-        // Check if user is banned first
-        if (state.bans.is_banned(principal)) {
-            return false;
+        // Check if user is banned first if we have a ban checker
+        switch (state.ban_checker) {
+            case (?check_banned) {
+                if (check_banned(principal)) {
+                    return false;
+                };
+            };
+            case null {};
         };
 
         // Admins have all permissions
@@ -356,6 +367,10 @@ module Permissions {
     };
 
     public class PermissionsManager(state : PermissionState) {
+        public func set_ban_checker(checker : BanChecker) {
+            state.ban_checker := ?checker;
+        };
+
         public func check_permission(principal : Principal, permission : Text) : Bool {
             Permissions.check_permission(principal, permission, state);
         };
