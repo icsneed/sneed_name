@@ -174,11 +174,16 @@ module {
             neuron_id : { id : Blob },
             sns_governance : SnsPermissions.SnsGovernanceCanister
         ) : async* Bool {
-            // First check if caller has general permission
+            // First check if caller has general permission using detailed check
             switch (permissions) {
                 case (?p) {
-                    if (p.check_permission(caller, SET_SNS_NEURON_NAME_PERMISSION)) {
-                        return true;
+                    switch (p.check_permission_detailed(caller, SET_SNS_NEURON_NAME_PERMISSION)) {
+                        case (#Allowed) { return true };
+                        case (#Banned(_)) { return false };  // Banned users cannot proceed to fallback checks
+                        case (#PermissionNotGranted) {};  // Continue to fallback checks
+                        case (#PermissionExpired(_)) {};  // Continue to fallback checks
+                        case (#PermissionTypeNotFound(_)) {};  // Continue to fallback checks
+                        case (#NoPrincipalPermissions) {};  // Continue to fallback checks
                     };
                 };
                 case null {};
@@ -199,19 +204,33 @@ module {
             target : Principal,
             sns_governance : SnsPermissions.SnsGovernanceCanister
         ) : async* Bool {
-            // First check if caller has general permission
+            // First check if caller has general permission using detailed check
             switch (permissions) {
                 case (?p) {
-                    if (p.check_permission(caller, SET_SNS_PRINCIPAL_NAME_PERMISSION)) {
-                        return true;
+                    switch (p.check_permission_detailed(caller, SET_SNS_PRINCIPAL_NAME_PERMISSION)) {
+                        case (#Allowed) { return true };
+                        case (#Banned(_)) { return false };  // Banned users cannot proceed to fallback checks
+                        case (#PermissionNotGranted) {};  // Continue to fallback checks
+                        case (#PermissionExpired(_)) {};  // Continue to fallback checks
+                        case (#PermissionTypeNotFound(_)) {};  // Continue to fallback checks
+                        case (#NoPrincipalPermissions) {};  // Continue to fallback checks
                     };
                 };
                 case null {};
             };
 
-            // Check if caller is the target principal
+            // Check if caller is the target principal (but only if not banned)
             if (Principal.equal(caller, target)) {
-                return true;
+                switch (permissions) {
+                    case (?p) {
+                        // Even for self-editing, check if user is banned
+                        switch (p.check_permission_detailed(caller, "dummy_permission")) {
+                            case (#Banned(_)) { return false };
+                            case _ { return true };
+                        };
+                    };
+                    case null { return true };
+                };
             };
             
             // Fall back to checking if principal is in caller's reachable set

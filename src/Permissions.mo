@@ -14,6 +14,16 @@ import Buffer "mo:base/Buffer";
 
 // We need module name "Permissions" to allow class methods to refer to them when they would otherwise have a name conflict.
 module Permissions {
+    // Permission check result type
+    public type PermissionResult = {
+        #Allowed;
+        #Banned : { reason : Text };
+        #PermissionNotGranted;
+        #PermissionExpired : { expired_at : Nat64 };
+        #PermissionTypeNotFound : { permission : Text };
+        #NoPrincipalPermissions;
+    };
+
     // Ban-related types
     public type BanLogEntry = {
         user: Nat32;  // Deduped user principal index
@@ -199,13 +209,13 @@ module Permissions {
         };
     };
 
-    public func check_permission(principal : Principal, permission : Text, state : PermissionState) : Bool {
-        // Check if user is banned
+    public func check_permission_detailed(principal : Principal, permission : Text, state : PermissionState) : PermissionResult {
+        // Check if user is banned first
         let user_index = state.dedup.getOrCreateIndexForPrincipal(principal);
         switch (Map.get(state.ban_state.banned_users, (func (n : Nat32) : Nat32 { n }, Nat32.equal), user_index)) {
             case (?expiry) {
                 if (expiry > Time.now()) {
-                    return false;
+                    return #Banned({ reason = "User is currently banned" });
                 };
             };
             case null {};
@@ -213,13 +223,13 @@ module Permissions {
 
         // Admins have all permissions
         if (is_admin(principal, state)) {
-            return true;
+            return #Allowed;
         };
 
         let permission_index = text_to_index(permission, state.dedup);
         // First check if permission type exists
         switch (Map.get(state.permission_types, (func (n : Nat32) : Nat32 { n }, Nat32.equal), permission_index)) {
-            case null { return false };
+            case null { return #PermissionTypeNotFound({ permission = permission }) };
             case (?_) {};
         };
 
@@ -233,15 +243,30 @@ module Permissions {
                         switch (metadata.expires_at) {
                             case (?expiry) {
                                 let now = Nat64.fromIntWrap(Time.now());
-                                now < expiry
+                                if (now < expiry) {
+                                    #Allowed
+                                } else {
+                                    #PermissionExpired({ expired_at = expiry })
+                                }
                             };
-                            case null { true };
+                            case null { #Allowed };
                         };
                     };
-                    case null { false };
+                    case null { #PermissionNotGranted };
                 };
             };
-            case null { false };
+            case null { #NoPrincipalPermissions };
+        };
+    };
+
+    public func check_permission(principal : Principal, permission : Text, state : PermissionState) : Bool {
+        switch (check_permission_detailed(principal, permission, state)) {
+            case (#Allowed) { true };
+            case (#Banned(_)) { false };
+            case (#PermissionNotGranted) { false };
+            case (#PermissionExpired(_)) { false };
+            case (#PermissionTypeNotFound(_)) { false };
+            case (#NoPrincipalPermissions) { false };
         };
     };
 
@@ -454,6 +479,10 @@ module Permissions {
 
         public func check_permission(principal : Principal, permission : Text) : Bool {
             Permissions.check_permission(principal, permission, state);
+        };
+
+        public func check_permission_detailed(principal : Principal, permission : Text) : PermissionResult {
+            Permissions.check_permission_detailed(principal, permission, state);
         };
 
         public func ban_user(
