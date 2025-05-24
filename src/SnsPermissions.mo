@@ -350,16 +350,12 @@ module {
             #ok(());
         };
 
-        // Helper to find all neurons where caller has hotkey access
-        public func find_hotkeyed_neurons(
-            caller : Principal,
-            sns_governance : SnsGovernanceCanister
-        ) : async [Neuron] {
-            await sns_governance.list_neurons(caller);
-        };
 
         // Helper to find owner principals from a list of neurons
-        public func find_reachable_principals(neurons : [Neuron]) : [Principal] {
+        public func find_reachable_principals(caller: Principal, sns_governance : SnsGovernanceCanister) : async [Principal] {
+
+            let neurons = await sns_governance.list_neurons(caller);        
+
             let owners = Buffer.Buffer<Principal>(neurons.size());
             let seen = Map.new<Principal, ()>();
             let utils = (Principal.hash, Principal.equal);
@@ -402,13 +398,15 @@ module {
 
         // Helper to find all neurons reachable through a list of principals
         public func find_reachable_neurons(
-            principals : [Principal],
+            caller : Principal,
             sns_governance : SnsGovernanceCanister
         ) : async [Neuron] {
             let all_neurons = Buffer.Buffer<Neuron>(0);
             let seen_ids = Map.new<Blob, ()>();
             let utils = (Blob.hash, Blob.equal);
             
+            let principals = await find_reachable_principals(caller, sns_governance);
+
             for (principal in principals.vals()) {
                 let neurons = await sns_governance.list_neurons(principal);
                 
