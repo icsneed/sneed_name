@@ -523,7 +523,7 @@ do {
             case null { Debug.trap("Governance neuron name not found") };
             case (?name) {
                 assert(name.name == "governance-neuron");
-                assert(name.created_by == governance_principal);
+                assert(name.updated_by == governance_principal);
             };
         };
 
