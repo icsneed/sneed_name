@@ -551,7 +551,7 @@ do {
     shared func test_ban_integration() : async () {
         Debug.print("Testing ban integration...");
 
-        // Set up permissions
+        // Set up permissions first (this contains the dedup and ban system)
         let state = Permissions.empty();
         let admin_metadata : Permissions.PermissionMetadata = {
             created_by = admin1;
@@ -586,20 +586,14 @@ do {
             case (#ok()) {};
         };
 
-        // Set up ban system
-        let ban_state = Bans.empty();
-        let ban_system = Bans.Bans(ban_state, state.dedup, func(p: Principal, perm: Text) : Bool {
-            permissions.check_permission(p, perm)
-        });
-
-        // Set up SNS permissions with ban integration
+        // Set up SNS permissions using the same permissions instance (which contains dedup and bans)
         let sns_state = SnsPermissions.from_stable(
             SnsPermissions.empty_stable(),
-            permissions
+            permissions  // This ensures SNS permissions uses the same dedup and ban system
         );
         let sns_permissions = SnsPermissions.SnsPermissions(sns_state);
 
-        // Set up name index
+        // Set up name index using the SNS permissions (which will use the shared dedup and ban system)
         let name_state = Lib.empty_stable();
         let name_index = Lib.NameIndex(name_state, ?sns_permissions);
 
@@ -621,10 +615,10 @@ do {
             case (#Ok()) {};
         };
 
-        // Ban user1
-        switch(ban_system.ban_user(admin1, user1, ?(24), "Test integration")) {
-            case (#err(e)) { Debug.trap("Failed to ban user: " # e) };
-            case (#ok()) {};
+        // Ban user1 using the permissions system (which contains the ban system)
+        switch(permissions.ban_user(admin1, user1, "Test integration", ?(Time.now() + 24 * 3600 * 1_000_000_000))) {
+            case (#Err(e)) { Debug.trap("Failed to ban user: " # debug_show(e)) };
+            case (#Ok()) {};
         };
 
         // Verify banned user1 cannot set names despite having permission
@@ -655,9 +649,9 @@ do {
         };
 
         // Unban user1
-        switch(ban_system.unban_user(admin1, user1)) {
-            case (#err(e)) { Debug.trap("Failed to unban user: " # e) };
-            case (#ok()) {};
+        switch(permissions.unban_user(admin1, user1)) {
+            case (#Err(e)) { Debug.trap("Failed to unban user: " # debug_show(e)) };
+            case (#Ok()) {};
         };
 
         // Verify user1 can set names again after unban
