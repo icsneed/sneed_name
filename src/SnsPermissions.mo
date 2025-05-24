@@ -10,6 +10,7 @@ import Permissions "./Permissions";
 import Dedup "mo:dedup";
 import Blob "mo:base/Blob";
 import T "Types";
+import Buffer "mo:base/Buffer";
 
 module {
     // Permission type constants
@@ -347,6 +348,105 @@ module {
             let neuron_index = state.dedup.getOrCreateIndex(neuron_id.id);
             Map.delete(state.neuron_names, (func (n : Nat32) : Nat32 { n }, Nat32.equal), neuron_index);
             #ok(());
+        };
+
+        // Helper to find all neurons where caller has hotkey access
+        public func find_hotkeyed_neurons(
+            caller : Principal,
+            sns_governance : SnsGovernanceCanister
+        ) : async [Neuron] {
+            let neurons = await sns_governance.list_neurons(caller);
+            let hotkeyed_neurons = Buffer.Buffer<Neuron>(neurons.size());
+            
+            for (neuron in neurons.vals()) {
+                label neuron_loop for (permission in neuron.permissions.vals()) {
+                    switch (permission.principal) {
+                        case (?p) {
+                            if (Principal.equal(p, caller)) {
+                                hotkeyed_neurons.add(neuron);
+                                break neuron_loop;
+                            };
+                        };
+                        case null {};
+                    };
+                };
+            };
+            
+            Buffer.toArray(hotkeyed_neurons)
+        };
+
+        // Helper to find owner principals from a list of neurons
+        public func find_reachable_principals(neurons : [Neuron]) : [Principal] {
+            let owners = Buffer.Buffer<Principal>(neurons.size());
+            let seen = Map.new<Principal, ()>();
+            let utils = (Principal.hash, Principal.equal);
+
+            for (neuron in neurons.vals()) {
+                // Find principal with most permissions in this neuron
+                var max_permissions = 0;
+                var owner : ?Principal = null;
+                
+                for (permission in neuron.permissions.vals()) {
+                    switch (permission.principal) {
+                        case (?p) {
+                            let perm_count = permission.permission_type.size();
+                            if (perm_count > max_permissions) {
+                                max_permissions := perm_count;
+                                owner := ?p;
+                            };
+                        };
+                        case null {};
+                    };
+                };
+
+                // Add owner to result if not seen before
+                switch (owner) {
+                    case (?p) {
+                        switch (Map.get(seen, utils, p)) {
+                            case null {
+                                Map.set(seen, utils, p, ());
+                                owners.add(p);
+                            };
+                            case (?_) {};
+                        };
+                    };
+                    case null {};
+                };
+            };
+            
+            Buffer.toArray(owners)
+        };
+
+        // Helper to find all neurons reachable through a list of principals
+        public func find_reachable_neurons(
+            principals : [Principal],
+            sns_governance : SnsGovernanceCanister
+        ) : async [Neuron] {
+            let all_neurons = Buffer.Buffer<Neuron>(0);
+            let seen_ids = Map.new<Blob, ()>();
+            let utils = (Blob.hash, Blob.equal);
+            
+            for (principal in principals.vals()) {
+                let neurons = await sns_governance.list_neurons(principal);
+                
+                for (neuron in neurons.vals()) {
+                    switch (neuron.id) {
+                        case (?id) {
+                            // Only add if we haven't seen this neuron ID before
+                            switch (Map.get(seen_ids, utils, id.id)) {
+                                case null {
+                                    Map.set(seen_ids, utils, id.id, ());
+                                    all_neurons.add(neuron);
+                                };
+                                case (?_) {};
+                            };
+                        };
+                        case null {};
+                    };
+                };
+            };
+            
+            Buffer.toArray(all_neurons)
         };
     };
 }
