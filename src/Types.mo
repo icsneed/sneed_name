@@ -40,6 +40,7 @@ module {
         #InsufficientVotingPower : { required : Nat64; actual : Nat64 };
         #NeuronNotFound : { neuron_id : Blob };
         #PrincipalNotFound : { principal : Principal };
+        #BannedWord : { word : Text };
     };
 
     public type AdminError = {

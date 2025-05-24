@@ -14,6 +14,7 @@ import NamePermissions "./sneed_name/NamePermissions";
 import SnsPermissions "./SnsPermissions";
 import Array "mo:base/Array";
 import Blob "mo:base/Blob";
+import Iter "mo:base/Iter";
 
 module {
     // Permission type constants for SNS name management
@@ -27,6 +28,10 @@ module {
     // Permission type constants for ICRC1 account name management
     public let SET_ACCOUNT_NAME_PERMISSION = "set_account_name";
     public let REMOVE_ACCOUNT_NAME_PERMISSION = "remove_account_name";
+
+    // Permission type constants for banned word management
+    public let ADD_BANNED_WORD_PERMISSION = "add_banned_word";
+    public let REMOVE_BANNED_WORD_PERMISSION = "remove_banned_word";
 
     public func empty_stable() : T.NameIndexState {
         {
@@ -157,6 +162,12 @@ module {
                     case null {};
                 };
                 return #Err(#NotAuthorized({ required_permission = ?NamePermissions.EDIT_ANY_NAME }));
+            };
+            
+            // Check for banned words and auto-ban if needed
+            switch (await* check_and_handle_banned_words(caller, name)) {
+                case (#Err(e)) { return #Err(e) };
+                case (#Ok()) {};
             };
             
             let name_lower = Text.toLowercase(name);
@@ -368,6 +379,12 @@ module {
                 };
             };
 
+            // Check for banned words and auto-ban if needed
+            switch (await* check_and_handle_banned_words(caller, name)) {
+                case (#Err(e)) { return #Err(e) };
+                case (#Ok()) {};
+            };
+
             let name_lower = Text.toLowercase(name);
             
             // Check if name is already taken by someone else
@@ -499,6 +516,12 @@ module {
                 case (#PermissionTypeExists(_)) {
                     return #Err(#NotAuthorized({ required_permission = ?SET_SNS_PRINCIPAL_NAME_PERMISSION }));
                 };
+            };
+
+            // Check for banned words and auto-ban if needed
+            switch (await* check_and_handle_banned_words(caller, name)) {
+                case (#Err(e)) { return #Err(e) };
+                case (#Ok()) {};
             };
 
             let name_lower = Text.toLowercase(name);
@@ -863,6 +886,12 @@ module {
                 return #Err(#NotAuthorized({ required_permission = ?SET_ACCOUNT_NAME_PERMISSION }));
             };
 
+            // Check for banned words and auto-ban if needed
+            switch (await* check_and_handle_banned_words(caller, name)) {
+                case (#Err(e)) { return #Err(e) };
+                case (#Ok()) {};
+            };
+
             let name_lower = Text.toLowercase(name);
             
             // Check if name is already taken by someone else
@@ -1019,6 +1048,150 @@ module {
                 case null { false };
             };
         };
+
+        // Banned word management
+        public func add_banned_word(caller : Principal, word : Text) : async* T.NameResult<()> {
+            // Check if caller has permission to add banned words
+            switch (permissions) {
+                case (?p) {
+                    switch (p.check_permission_detailed(caller, ADD_BANNED_WORD_PERMISSION)) {
+                        case (#Allowed) {};
+                        case (#Banned(reason)) {
+                            return #Err(#Banned({ reason = reason.reason; expires_at = reason.expires_at }));
+                        };
+                        case _ {
+                            return #Err(#NotAuthorized({ required_permission = ?ADD_BANNED_WORD_PERMISSION }));
+                        };
+                    };
+                };
+                case null {
+                    return #Err(#NotAuthorized({ required_permission = ?ADD_BANNED_WORD_PERMISSION }));
+                };
+            };
+
+            let word_lower = Text.toLowercase(word);
+            let now = Nat64.fromIntWrap(Time.now());
+            
+            let banned_word_record : T.Name = {
+                name = word_lower;
+                verified = true;  // Banned words are always "verified" as banned
+                created = now;
+                updated = now;
+                created_by = caller;
+                updated_by = caller;
+            };
+
+            Map.set(state.blacklisted_words, textUtils, word_lower, banned_word_record);
+            #Ok(());
+        };
+
+        public func remove_banned_word(caller : Principal, word : Text) : async* T.NameResult<()> {
+            // Check if caller has permission to remove banned words
+            switch (permissions) {
+                case (?p) {
+                    switch (p.check_permission_detailed(caller, REMOVE_BANNED_WORD_PERMISSION)) {
+                        case (#Allowed) {};
+                        case (#Banned(reason)) {
+                            return #Err(#Banned({ reason = reason.reason; expires_at = reason.expires_at }));
+                        };
+                        case _ {
+                            return #Err(#NotAuthorized({ required_permission = ?REMOVE_BANNED_WORD_PERMISSION }));
+                        };
+                    };
+                };
+                case null {
+                    return #Err(#NotAuthorized({ required_permission = ?REMOVE_BANNED_WORD_PERMISSION }));
+                };
+            };
+
+            let word_lower = Text.toLowercase(word);
+            Map.delete(state.blacklisted_words, textUtils, word_lower);
+            #Ok(());
+        };
+
+        public func is_word_banned(word : Text) : Bool {
+            let word_lower = Text.toLowercase(word);
+            switch (Map.get(state.blacklisted_words, textUtils, word_lower)) {
+                case (?_) { true };
+                case null { false };
+            };
+        };
+
+        public func get_banned_words(caller : Principal) : async* T.NameResult<[Text]> {
+            // Check if caller has permission to view banned words (either add or remove permission)
+            switch (permissions) {
+                case (?p) {
+                    let has_add_permission = p.check_permission(caller, ADD_BANNED_WORD_PERMISSION);
+                    let has_remove_permission = p.check_permission(caller, REMOVE_BANNED_WORD_PERMISSION);
+                    let is_admin = p.is_admin(caller);
+                    
+                    if (not (has_add_permission or has_remove_permission or is_admin)) {
+                        return #Err(#NotAuthorized({ required_permission = ?ADD_BANNED_WORD_PERMISSION }));
+                    };
+                };
+                case null {
+                    return #Err(#NotAuthorized({ required_permission = ?ADD_BANNED_WORD_PERMISSION }));
+                };
+            };
+
+            let words = Map.keys(state.blacklisted_words);
+            #Ok(Iter.toArray(words));
+        };
+
+        // Helper function to check if a name contains banned words and auto-ban if needed
+        private func check_and_handle_banned_words(caller : Principal, name : Text) : async* T.NameResult<()> {
+            let name_lower = Text.toLowercase(name);
+            
+            // Check if the name itself is a banned word
+            if (is_word_banned(name_lower)) {
+                // Auto-ban the user
+                switch (permissions) {
+                    case (?p) {
+                        // Calculate ban duration based on previous bans (this would need to be implemented in the ban system)
+                        // For now, we'll use a default escalating ban system
+                        let ban_reason = "Used banned word: " # name;
+                        switch (p.ban_user(caller, caller, ban_reason, null)) {
+                            case (#Err(_)) {
+                                // If banning fails, still return the banned word error
+                                return #Err(#BannedWord({ word = name }));
+                            };
+                            case (#Ok()) {
+                                return #Err(#BannedWord({ word = name }));
+                            };
+                        };
+                    };
+                    case null {
+                        return #Err(#BannedWord({ word = name }));
+                    };
+                };
+            };
+
+            // Check if the name contains any banned words as substrings
+            for ((banned_word, _) in Map.entries(state.blacklisted_words)) {
+                if (Text.contains(name_lower, #text banned_word)) {
+                    // Auto-ban the user
+                    switch (permissions) {
+                        case (?p) {
+                            let ban_reason = "Used banned word '" # banned_word # "' in name: " # name;
+                            switch (p.ban_user(caller, caller, ban_reason, null)) {
+                                case (#Err(_)) {
+                                    // If banning fails, still return the banned word error
+                                    return #Err(#BannedWord({ word = banned_word }));
+                                };
+                                case (#Ok()) {
+                                    return #Err(#BannedWord({ word = banned_word }));
+                                };
+                            };
+                        };
+                        case null {
+                            return #Err(#BannedWord({ word = banned_word }));
+                        };
+                    };
+                };
+            };
+
+            #Ok(());
+        };
     };
 
     // Function to add SNS permission types
@@ -1117,6 +1290,30 @@ module {
             ?(30 * 24 * 60 * 60 * 1_000_000_000)    // 30 days default
         );
         switch(remove_account_result) {
+            case (#Err(e)) { return #Err(e) };
+            case (#Ok()) {};
+        };
+
+        // Add permission type for adding banned words
+        let add_banned_word_result = permissions.add_permission_type(
+            ADD_BANNED_WORD_PERMISSION,
+            "Permission to add banned words",
+            ?(365 * 24 * 60 * 60 * 1_000_000_000),  // 1 year max
+            ?(30 * 24 * 60 * 60 * 1_000_000_000)    // 30 days default
+        );
+        switch(add_banned_word_result) {
+            case (#Err(e)) { return #Err(e) };
+            case (#Ok()) {};
+        };
+
+        // Add permission type for removing banned words
+        let remove_banned_word_result = permissions.add_permission_type(
+            REMOVE_BANNED_WORD_PERMISSION,
+            "Permission to remove banned words",
+            ?(365 * 24 * 60 * 60 * 1_000_000_000),  // 1 year max
+            ?(30 * 24 * 60 * 60 * 1_000_000_000)    // 30 days default
+        );
+        switch(remove_banned_word_result) {
             case (#Err(e)) { return #Err(e) };
             case (#Ok()) {};
         };
