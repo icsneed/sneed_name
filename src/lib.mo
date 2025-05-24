@@ -9,6 +9,7 @@ import Time "mo:base/Time";
 import Nat64 "mo:base/Nat64";
 import Permissions "./Permissions";
 import NamePermissions "./sneed_name/NamePermissions";
+import SnsPermissions "./SnsPermissions";
 
 module {
     public func empty() : T.NameIndexState {
@@ -145,6 +146,117 @@ module {
                 };
                 case null { null };
             };
+        };
+
+        // SNS Neuron Name Management
+        public func set_sns_neuron_name(
+            caller : Principal,
+            neuron_id : { id : Blob },
+            name : Text,
+            sns_permissions : ?SnsPermissions.SnsPermissions,
+            sns_governance : SnsPermissions.SnsGovernanceCanister
+        ) : async* Result.Result<(), Text> {
+            // Check permissions
+            switch (sns_permissions) {
+                case (?sp) {
+                    if (not (await sp.can_set_neuron_name(caller, neuron_id, sns_governance))) {
+                        return #err("Not authorized: caller must have set_sns_neuron_name permission or be a hotkey for this neuron");
+                    };
+                };
+                case null {
+                    return #err("SNS permissions not configured");
+                };
+            };
+
+            let name_lower = Text.toLowercase(name);
+            
+            // Check if name is already taken by someone else
+            switch (Map.get(state.index_to_name, textUtils, name_lower)) {
+                case (?existing_index) {
+                    let target_index = dedup.getOrCreateIndex(neuron_id.id);
+                    if (existing_index != target_index) {
+                        return #err("Name already taken");
+                    };
+                };
+                case null {};
+            };
+
+            let neuron_index = dedup.getOrCreateIndex(neuron_id.id);
+            let now = Nat64.fromIntWrap(Time.now());
+            
+            // Create or update name record
+            let name_record = switch (Map.get(state.name_to_index, nat32Utils, neuron_index)) {
+                case (?existing) {
+                    {
+                        name = name;
+                        verified = existing.verified;  // Preserve verified status
+                        created = existing.created;
+                        updated = now;
+                        created_by = existing.created_by;
+                        updated_by = caller;
+                    }
+                };
+                case null {
+                    {
+                        name = name;
+                        verified = false;  // New names start unverified
+                        created = now;
+                        updated = now;
+                        created_by = caller;
+                        updated_by = caller;
+                    }
+                };
+            };
+
+            // Remove old name from inverse map if it exists
+            switch (Map.get(state.name_to_index, nat32Utils, neuron_index)) {
+                case (?old_record) {
+                    Map.delete(state.index_to_name, textUtils, Text.toLowercase(old_record.name));
+                };
+                case null {};
+            };
+
+            // Set new mappings
+            Map.set(state.name_to_index, nat32Utils, neuron_index, name_record);
+            Map.set(state.index_to_name, textUtils, name_lower, neuron_index);
+            #ok(());
+        };
+
+        public func get_sns_neuron_name(neuron_id : { id : Blob }) : ?T.Name {
+            let neuron_index = dedup.getOrCreateIndex(neuron_id.id);
+            Map.get(state.name_to_index, nat32Utils, neuron_index);
+        };
+
+        public func remove_sns_neuron_name(
+            caller : Principal,
+            neuron_id : { id : Blob },
+            sns_permissions : ?SnsPermissions.SnsPermissions,
+            sns_governance : SnsPermissions.SnsGovernanceCanister
+        ) : async* Result.Result<(), Text> {
+            // Check permissions
+            switch (sns_permissions) {
+                case (?sp) {
+                    if (not (await sp.can_set_neuron_name(caller, neuron_id, sns_governance))) {
+                        return #err("Not authorized: caller must have remove_sns_neuron_name permission or be a hotkey for this neuron");
+                    };
+                };
+                case null {
+                    return #err("SNS permissions not configured");
+                };
+            };
+
+            let neuron_index = dedup.getOrCreateIndex(neuron_id.id);
+            
+            // Remove old name from inverse map if it exists
+            switch (Map.get(state.name_to_index, nat32Utils, neuron_index)) {
+                case (?old_record) {
+                    Map.delete(state.index_to_name, textUtils, Text.toLowercase(old_record.name));
+                };
+                case null {};
+            };
+
+            Map.delete(state.name_to_index, nat32Utils, neuron_index);
+            #ok(());
         };
     };
 }
