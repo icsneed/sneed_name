@@ -205,8 +205,12 @@ actor {
     name : Text,
     sns_governance : Principal
   ) : async Result.Result<(), Text> {
-    let governance_canister : SnsPermissions.SnsGovernanceCanister = actor(Principal.toText(sns_governance));
-    await* name_index.set_sns_neuron_name(caller, neuron_id, name, governance_canister);
+    name_index := NameIndex.NameIndex(
+      name_index_state,
+      ?sns_permissions,
+      ?actor(Principal.toText(sns_governance))
+    );
+    await* name_index.set_sns_neuron_name(caller, neuron_id, name);
   };
 
   public query func get_sns_neuron_name(neuron_id : { id : Blob }) : async ?T.Name {
@@ -217,8 +221,12 @@ actor {
     neuron_id : { id : Blob },
     sns_governance : Principal
   ) : async Result.Result<(), Text> {
-    let governance_canister : SnsPermissions.SnsGovernanceCanister = actor(Principal.toText(sns_governance));
-    await* name_index.remove_sns_neuron_name(caller, neuron_id, governance_canister);
+    name_index := NameIndex.NameIndex(
+      name_index_state,
+      ?sns_permissions,
+      ?actor(Principal.toText(sns_governance))
+    );
+    await* name_index.remove_sns_neuron_name(caller, neuron_id);
   };
 
   // Ban Management
