@@ -355,24 +355,7 @@ module {
             caller : Principal,
             sns_governance : SnsGovernanceCanister
         ) : async [Neuron] {
-            let neurons = await sns_governance.list_neurons(caller);
-            let hotkeyed_neurons = Buffer.Buffer<Neuron>(neurons.size());
-            
-            for (neuron in neurons.vals()) {
-                label neuron_loop for (permission in neuron.permissions.vals()) {
-                    switch (permission.principal) {
-                        case (?p) {
-                            if (Principal.equal(p, caller)) {
-                                hotkeyed_neurons.add(neuron);
-                                break neuron_loop;
-                            };
-                        };
-                        case null {};
-                    };
-                };
-            };
-            
-            Buffer.toArray(hotkeyed_neurons)
+            await sns_governance.list_neurons(caller);
         };
 
         // Helper to find owner principals from a list of neurons
