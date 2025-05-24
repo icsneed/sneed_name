@@ -57,16 +57,22 @@ module {
                 return #err("Anonymous caller");
             };
             
-            // Check permissions through the permission system
+            // First check if user is banned
+            switch (permissions) {
+                case (?p) {
+                    if (p.is_banned(caller)) {
+                        return #err("Caller is banned");
+                    };
+                };
+                case null {};
+            };
+            
+            // Then check permissions
             let has_permission = switch (permissions) {
                 case (?p) {
-                    // Even self-editing should go through permission check to respect bans
-                    if (Principal.equal(caller, principal)) {
-                        not p.is_banned(caller)
-                    } else {
-                        p.is_admin(caller) or 
-                        p.check_permission(caller, NamePermissions.EDIT_ANY_NAME)
-                    };
+                    Principal.equal(caller, principal) or 
+                    p.is_admin(caller) or 
+                    p.check_permission(caller, NamePermissions.EDIT_ANY_NAME)
                 };
                 case null {
                     Principal.equal(caller, principal)  // Without permissions, only allow self-editing
