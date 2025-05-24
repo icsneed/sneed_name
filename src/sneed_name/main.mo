@@ -22,8 +22,7 @@ actor {
   // Create name index first since we need its dedup
   var name_index : NameIndex.NameIndex = NameIndex.NameIndex(
     name_index_state,  // from
-    null,  // sns_permissions
-    null   // sns_governance
+    null  // sns_permissions
   );  // Pass null for permissions initially
   
   // Create ban system with dedup
@@ -55,8 +54,7 @@ actor {
   // Now update name index with the permissions
   name_index := NameIndex.NameIndex(
     name_index_state,
-    ?sns_permissions,
-    null  // No governance canister yet
+    ?sns_permissions
   );
 
   // Add permission types
@@ -205,12 +203,8 @@ actor {
     name : Text,
     sns_governance : Principal
   ) : async Result.Result<(), Text> {
-    name_index := NameIndex.NameIndex(
-      name_index_state,
-      ?sns_permissions,
-      ?actor(Principal.toText(sns_governance))
-    );
-    await* name_index.set_sns_neuron_name(caller, neuron_id, name);
+    let governance_canister : SnsPermissions.SnsGovernanceCanister = actor(Principal.toText(sns_governance));
+    await* name_index.set_sns_neuron_name(caller, neuron_id, name, governance_canister);
   };
 
   public query func get_sns_neuron_name(neuron_id : { id : Blob }) : async ?T.Name {
@@ -221,12 +215,8 @@ actor {
     neuron_id : { id : Blob },
     sns_governance : Principal
   ) : async Result.Result<(), Text> {
-    name_index := NameIndex.NameIndex(
-      name_index_state,
-      ?sns_permissions,
-      ?actor(Principal.toText(sns_governance))
-    );
-    await* name_index.remove_sns_neuron_name(caller, neuron_id);
+    let governance_canister : SnsPermissions.SnsGovernanceCanister = actor(Principal.toText(sns_governance));
+    await* name_index.remove_sns_neuron_name(caller, neuron_id, governance_canister);
   };
 
   // Ban Management

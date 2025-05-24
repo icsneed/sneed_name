@@ -23,13 +23,13 @@ module {
             dedup_state = ?Dedup.empty();
             name_to_index = Map.new<Nat32, T.Name>();
             index_to_name = Map.new<Text, Nat32>();
+            blacklisted_words = Map.new<Text, T.Name>();
         };
     };
 
     public class NameIndex(
         from: T.NameIndexState, 
-        sns_permissions: ?SnsPermissions.SnsPermissions,
-        sns_governance: ?SnsPermissions.SnsGovernanceCanister
+        sns_permissions: ?SnsPermissions.SnsPermissions
     ) {
         private let state = from;
         let dedup = Dedup.Dedup(state.dedup_state);
@@ -165,7 +165,8 @@ module {
         // Check if caller can set a neuron's name
         public func can_set_neuron_name(
             caller : Principal,
-            neuron_id : { id : Blob }
+            neuron_id : { id : Blob },
+            sns_governance : SnsPermissions.SnsGovernanceCanister
         ) : async* Bool {
             // First check if caller has general permission
             switch (permissions) {
@@ -178,18 +179,19 @@ module {
             };
             
             // Fall back to checking if neuron is in caller's reachable set
-            switch (sns_permissions, sns_governance) {
-                case (?sp, ?gov) {
-                    await sp.has_neuron_access(caller, neuron_id, gov)
+            switch (sns_permissions) {
+                case (?sp) {
+                    await sp.has_neuron_access(caller, neuron_id, sns_governance)
                 };
-                case _ { false };
+                case null { false };
             };
         };
 
         // Check if caller can set a principal's name
         public func can_set_principal_name(
             caller : Principal,
-            target : Principal
+            target : Principal,
+            sns_governance : SnsPermissions.SnsGovernanceCanister
         ) : async* Bool {
             // First check if caller has general permission
             switch (permissions) {
@@ -207,11 +209,11 @@ module {
             };
             
             // Fall back to checking if principal is in caller's reachable set
-            switch (sns_permissions, sns_governance) {
-                case (?sp, ?gov) {
-                    await sp.has_principal_access(caller, target, gov)
+            switch (sns_permissions) {
+                case (?sp) {
+                    await sp.has_principal_access(caller, target, sns_governance)
                 };
-                case _ { false };
+                case null { false };
             };
         };
 
@@ -219,10 +221,11 @@ module {
         public func set_sns_neuron_name(
             caller : Principal,
             neuron_id : { id : Blob },
-            name : Text
+            name : Text,
+            sns_governance : SnsPermissions.SnsGovernanceCanister
         ) : async* Result.Result<(), Text> {
             // Check permissions
-            if (not (await* can_set_neuron_name(caller, neuron_id))) {
+            if (not (await* can_set_neuron_name(caller, neuron_id, sns_governance))) {
                 return #err("Not authorized: caller must have set_sns_neuron_name permission or be a hotkey for this neuron");
             };
 
@@ -287,10 +290,11 @@ module {
 
         public func remove_sns_neuron_name(
             caller : Principal,
-            neuron_id : { id : Blob }
+            neuron_id : { id : Blob },
+            sns_governance : SnsPermissions.SnsGovernanceCanister
         ) : async* Result.Result<(), Text> {
             // Check permissions
-            if (not (await* can_set_neuron_name(caller, neuron_id))) {
+            if (not (await* can_set_neuron_name(caller, neuron_id, sns_governance))) {
                 return #err("Not authorized: caller must have remove_sns_neuron_name permission or be a hotkey for this neuron");
             };
 
