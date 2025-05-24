@@ -11,6 +11,7 @@ import Dedup "mo:dedup";
 import Blob "mo:base/Blob";
 import T "Types";
 import Buffer "mo:base/Buffer";
+import Bans "./Bans";
 
 module {
     public type NeuronId = { id : Blob };
@@ -33,6 +34,7 @@ module {
         permission_settings : Map.Map<Nat32, Map.Map<Nat32, SnsPermissionSettings>>;
         permissions : Permissions.PermissionsManager;
         dedup : Dedup.Dedup;
+        bans : Bans.Bans;
     };
 
     public func empty_stable() : StableSnsState {
@@ -50,6 +52,7 @@ module {
             permission_settings = stable_state.permission_settings;
             permissions = permissions;
             dedup = dedup;
+            bans = permissions.get_bans();  // Get ban system from permissions
         };
     };
 
@@ -116,6 +119,11 @@ module {
             principal : Principal,
             sns_governance : SnsGovernanceCanister
         ) : async Nat64 {
+            // Check if user is banned first
+            if (state.bans.is_banned(principal)) {
+                return 0;
+            };
+
             var total_power : Nat64 = 0;
             let neurons = await sns_governance.list_neurons(principal);
             
@@ -142,6 +150,11 @@ module {
             permission : Text,
             sns_governance : SnsGovernanceCanister
         ) : async Bool {
+            // Check if user is banned first
+            if (state.bans.is_banned(principal)) {
+                return false;
+            };
+
             // First check explicit permissions
             if (state.permissions.check_permission(principal, permission)) {
                 return true;

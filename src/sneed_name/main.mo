@@ -8,19 +8,28 @@ import Permissions "../Permissions";
 import NamePermissions "./NamePermissions";
 import Timer "mo:base/Timer";
 import SnsPermissions "../SnsPermissions";
+import Bans "../Bans";
+import BanPermissions "../BanPermissions";
 
 actor {
   // Stable state
   stable var stable_permission_state : Permissions.StablePermissionState = Permissions.empty_stable();
   stable var stable_sns_state : SnsPermissions.StableSnsState = SnsPermissions.empty_stable();
   stable var name_index_state : T.NameIndexState = NameIndex.empty();
+  stable var ban_state : Bans.BanState = Bans.empty();
 
   // Create name index first since we need its dedup
   var name_index : NameIndex.NameIndex = NameIndex.NameIndex(name_index_state, null);  // Pass null for permissions initially
   
-  // Now create permissions using the same dedup instance
-  var permission_state : Permissions.PermissionState = Permissions.from_stable(stable_permission_state, name_index.get_dedup());
+  // Create ban system with dedup
+  var ban_system = Bans.Bans(ban_state, name_index.get_dedup(), null);  // Pass null for permissions initially
+  
+  // Now create permissions using the same dedup and ban system
+  var permission_state : Permissions.PermissionState = Permissions.from_stable(stable_permission_state, name_index.get_dedup(), ban_system);
   var permissions : Permissions.PermissionsManager = Permissions.PermissionsManager(permission_state);
+
+  // Update ban system with permissions
+  ban_system := Bans.Bans(ban_state, name_index.get_dedup(), ?permissions);
 
   // Create SNS permissions wrapper
   var sns_state : SnsPermissions.SnsState = SnsPermissions.from_stable(stable_sns_state, permissions, name_index.get_dedup());
@@ -29,15 +38,17 @@ actor {
   // Now update name index with the permissions
   name_index := NameIndex.NameIndex(name_index_state, ?permissions);
 
-  // Add name-specific permission types
+  // Add permission types
   ignore NamePermissions.add_name_permissions(permissions);
+  ignore BanPermissions.add_ban_permissions(permissions);
 
-  // Timer for cleaning up expired permissions (runs every hour)
+  // Timer for cleaning up expired permissions and bans (runs every hour)
   // NB: We must use <system> tag here because the timer is a system timer
   let cleanup_timer = Timer.recurringTimer<system>(
     #seconds(3600),  // 1 hour
     func() : async () {
       permissions.cleanup_expired();
+      ban_system.cleanup_expired();
     }
   );
 
@@ -131,6 +142,7 @@ actor {
   system func postupgrade() {
     // Re-add permission types after upgrade
     ignore NamePermissions.add_name_permissions(permissions);
+    ignore BanPermissions.add_ban_permissions(permissions);
   };
 
   let nat32Utils = (func (n : Nat32) : Nat32 { n }, Nat32.equal);
@@ -188,4 +200,53 @@ actor {
     await sns_permissions.remove_sns_neuron_name(caller, neuron_id, governance_canister);
   };
 
+  // Ban Management
+  public shared ({ caller }) func ban_user(
+    user: Principal,
+    duration_hours: ?Nat,
+    reason: Text
+  ) : async Result.Result<(), Text> {
+    ban_system.ban_user(caller, user, duration_hours, reason);
+  };
+
+  public shared ({ caller }) func unban_user(
+    user: Principal
+  ) : async Result.Result<(), Text> {
+    ban_system.unban_user(caller, user);
+  };
+
+  public query func check_ban_status(user: Principal) : async Result.Result<Text, Text> {
+    ban_system.check_ban_status(user);
+  };
+
+  public shared ({ caller }) func get_ban_log() : async Result.Result<[{
+    user: Principal;
+    admin: Principal;
+    ban_timestamp: Int;
+    expiry_timestamp: Int;
+    reason: Text;
+  }], Text> {
+    ban_system.get_ban_log();
+  };
+
+  public shared ({ caller }) func get_banned_users() : async Result.Result<[(Principal, Int)], Text> {
+    ban_system.get_banned_users();
+  };
+
+  public shared ({ caller }) func get_user_ban_history(
+    user: Principal
+  ) : async Result.Result<[{
+    admin: Principal;
+    ban_timestamp: Int;
+    expiry_timestamp: Int;
+    reason: Text;
+  }], Text> {
+    ban_system.get_user_ban_history(caller, user);
+  };
+
+  public shared ({ caller }) func update_ban_settings(
+    settings: Bans.BanSettings
+  ) : async Result.Result<(), Text> {
+    ban_system.update_ban_settings(caller, settings);
+  };
 };

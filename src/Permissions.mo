@@ -7,6 +7,7 @@ import Nat64 "mo:base/Nat64";
 import Nat32 "mo:base/Nat32";
 import Array "mo:base/Array";
 import Dedup "mo:dedup";
+import Bans "./Bans";
 
 // We need module name "Permissions" to allow class methods to refer to them when they would otherwise have a name conflict.
 module Permissions {
@@ -34,6 +35,7 @@ module Permissions {
         principal_permissions : Map.Map<Nat32, Map.Map<Nat32, PermissionMetadata>>;  // Principal index -> Permission index -> Metadata
         var permission_types : Map.Map<Nat32, PermissionType>;  // Permission index -> Type info
         dedup : Dedup.Dedup;  // For principal -> index and text -> index conversion
+        bans : Bans.Bans;     // Ban system for checking if users are banned
     };
 
     // Built-in permission type keys
@@ -48,11 +50,13 @@ module Permissions {
 
     public func empty() : PermissionState {
         let dedup = Dedup.Dedup(?Dedup.empty());
+        let ban_state = Bans.empty();
         let state = {
             admins = Map.new<Nat32, PermissionMetadata>();
             principal_permissions = Map.new<Nat32, Map.Map<Nat32, PermissionMetadata>>();
             var permission_types = Map.new<Nat32, PermissionType>();
             dedup = dedup;
+            bans = Bans.Bans(ban_state, dedup, null);  // Pass null for permissions to avoid circular dependency
         };
 
         // Add built-in permission types
@@ -83,13 +87,14 @@ module Permissions {
         }
     };
 
-    // Create new state with existing dedup instance
-    public func from_dedup(dedup : Dedup.Dedup) : PermissionState {
+    // Create new state with existing dedup and ban system
+    public func from_dedup(dedup : Dedup.Dedup, bans : Bans.Bans) : PermissionState {
         let state = {
             admins = Map.new<Nat32, PermissionMetadata>();
             principal_permissions = Map.new<Nat32, Map.Map<Nat32, PermissionMetadata>>();
             var permission_types = Map.new<Nat32, PermissionType>();
             dedup = dedup;
+            bans = bans;
         };
 
         // Add built-in permission types
@@ -113,13 +118,14 @@ module Permissions {
         state
     };
 
-    // Create a new PermissionState from stable state, using provided dedup
-    public func from_stable(stable_state : StablePermissionState, dedup : Dedup.Dedup) : PermissionState {
+    // Create a new PermissionState from stable state, using provided dedup and ban system
+    public func from_stable(stable_state : StablePermissionState, dedup : Dedup.Dedup, bans : Bans.Bans) : PermissionState {
         let state = {
             admins = stable_state.admins;
             principal_permissions = stable_state.principal_permissions;
             var permission_types = Map.new<Nat32, PermissionType>();
             dedup = dedup;
+            bans = bans;
         };
 
         // Re-add built-in permission types
@@ -148,6 +154,11 @@ module Permissions {
             return true;
         };
 
+        // Check if user is banned first
+        if (state.bans.is_banned(principal)) {
+            return false;
+        };
+
         let index = state.dedup.getOrCreateIndexForPrincipal(principal);
         switch (Map.get(state.admins, (func (n : Nat32) : Nat32 { n }, Nat32.equal), index)) {
             case (?metadata) {
@@ -165,6 +176,11 @@ module Permissions {
     };
 
     public func check_permission(principal : Principal, permission : Text, state : PermissionState) : Bool {
+        // Check if user is banned first
+        if (state.bans.is_banned(principal)) {
+            return false;
+        };
+
         // Admins have all permissions
         if (is_admin(principal, state)) {
             return true;
