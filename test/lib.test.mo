@@ -85,32 +85,32 @@ do {
 
         // Test adding admin
         switch(await permissions.add_admin(admin1, admin2, null)) {
-            case (#err(e)) { Debug.trap("Failed to add admin2: " # e) };
-            case (#ok()) {};
+            case (#Err(e)) { Debug.trap("Failed to add admin2: " # debug_show(e)) };
+            case (#Ok()) {};
         };
 
         // Test that admin2 can now add another admin
         switch(await permissions.add_admin(admin2, user1, null)) {
-            case (#err(e)) { Debug.trap("Admin2 failed to add user1 as admin: " # e) };
-            case (#ok()) {};
+            case (#Err(e)) { Debug.trap("Admin2 failed to add user1 as admin: " # debug_show(e)) };
+            case (#Ok()) {};
         };
 
         // Test that non-admin cannot add admin
         switch(await permissions.add_admin(user2, user2, null)) {
-            case (#err(_)) {}; // Expected error
-            case (#ok()) { Debug.trap("Non-admin was able to add admin") };
+            case (#Err(_)) {}; // Expected error
+            case (#Ok()) { Debug.trap("Non-admin was able to add admin") };
         };
 
         // Test removing admin
         switch(await permissions.remove_admin(admin1, user1)) {
-            case (#err(e)) { Debug.trap("Failed to remove admin: " # e) };
-            case (#ok()) {};
+            case (#Err(e)) { Debug.trap("Failed to remove admin: " # debug_show(e)) };
+            case (#Ok()) {};
         };
 
         // Test that removed admin cannot add new admin
         switch(await permissions.add_admin(user1, user2, null)) {
-            case (#err(_)) {}; // Expected error
-            case (#ok()) { Debug.trap("Removed admin was able to add new admin") };
+            case (#Err(_)) {}; // Expected error
+            case (#Ok()) { Debug.trap("Removed admin was able to add new admin") };
         };
 
         Debug.print("✓ Admin management tests passed");
@@ -150,8 +150,8 @@ do {
             ?(24 * 60 * 60 * 1_000_000_000),  // 1 day max
             ?(60 * 60 * 1_000_000_000)  // 1 hour default
         )) {
-            case (#err(e)) { Debug.trap("Failed to add permission type: " # e) };
-            case (#ok()) {};
+            case (#Err(e)) { Debug.trap("Failed to add permission type: " # debug_show(e)) };
+            case (#Ok()) {};
         };
 
         // Test adding duplicate permission type
@@ -161,8 +161,8 @@ do {
             null,
             null
         )) {
-            case (#err(_)) {}; // Expected error
-            case (#ok()) { Debug.trap("Was able to add duplicate permission type") };
+            case (#Err(_)) {}; // Expected error
+            case (#Ok()) { Debug.trap("Was able to add duplicate permission type") };
         };
 
         // Convert permission type texts to indices
@@ -215,8 +215,8 @@ do {
 
         // Grant permission to user1
         switch(permissions.grant_permission(admin1, user1, TEST_PERMISSION, null)) {
-            case (#err(e)) { Debug.trap("Failed to grant permission: " # e) };
-            case (#ok()) {};
+            case (#Err(e)) { Debug.trap("Failed to grant permission: " # debug_show(e)) };
+            case (#Ok()) {};
         };
 
         // Test permission checks
@@ -244,8 +244,8 @@ do {
         
         // First grant permission with future expiry - should be valid
         switch(permissions.grant_permission(admin1, user2, TEST_PERMISSION, ?expired_time)) {
-            case (#err(e)) { Debug.trap("Failed to grant future permission: " # e) };
-            case (#ok()) {};
+            case (#Err(e)) { Debug.trap("Failed to grant future permission: " # debug_show(e)) };
+            case (#Ok()) {};
         };
 
         // Permission should be valid since expiry is in future
@@ -254,8 +254,8 @@ do {
         // Now grant with past expiry - should be invalid
         let past_time = now - 20;  // Set expiration to past time
         switch(permissions.grant_permission(admin1, user2, TEST_PERMISSION, ?past_time)) {
-            case (#err(e)) { Debug.trap("Failed to grant expired permission: " # e) };
-            case (#ok()) {};
+            case (#Err(e)) { Debug.trap("Failed to grant expired permission: " # debug_show(e)) };
+            case (#Ok()) {};
         };
 
         // Permission should be invalid since expiry is in past
@@ -293,26 +293,26 @@ do {
 
         // Grant add_admin permission to user1
         switch(permissions.grant_permission(admin1, user1, Permissions.ADD_ADMIN_PERMISSION, null)) {
-            case (#err(e)) { Debug.trap("Failed to grant add_admin permission: " # e) };
-            case (#ok()) {};
+            case (#Err(e)) { Debug.trap("Failed to grant add_admin permission: " # debug_show(e)) };
+            case (#Ok()) {};
         };
 
         // Grant remove_admin permission to user2
         switch(permissions.grant_permission(admin1, user2, Permissions.REMOVE_ADMIN_PERMISSION, null)) {
-            case (#err(e)) { Debug.trap("Failed to grant remove_admin permission: " # e) };
-            case (#ok()) {};
+            case (#Err(e)) { Debug.trap("Failed to grant remove_admin permission: " # debug_show(e)) };
+            case (#Ok()) {};
         };
 
         // Test that user1 can add admin
         switch(await permissions.add_admin(user1, user2, null)) {
-            case (#err(e)) { Debug.trap("User1 failed to add user2 as admin: " # e) };
-            case (#ok()) {};
+            case (#Err(e)) { Debug.trap("User1 failed to add user2 as admin: " # debug_show(e)) };
+            case (#Ok()) {};
         };
 
         // Test that user2 can remove admin
         switch(await permissions.remove_admin(user2, user1)) {
-            case (#err(e)) { Debug.trap("User2 failed to remove user1 as admin: " # e) };
-            case (#ok()) {};
+            case (#Err(e)) { Debug.trap("User2 failed to remove user1 as admin: " # debug_show(e)) };
+            case (#Ok()) {};
         };
 
         Debug.print("✓ Non-admin permission management tests passed");
@@ -384,8 +384,8 @@ do {
             "test-neuron",
             mock_governance
         )) {
-            case (#err(e)) { Debug.trap("Failed to set neuron name: " # e) };
-            case (#ok()) {};
+            case (#Err(e)) { Debug.trap("Failed to set neuron name: " # debug_show(e)) };
+            case (#Ok()) {};
         };
 
         // Verify neuron name was set
@@ -414,8 +414,8 @@ do {
 
         // Test setting principal name
         switch(await* name_index.set_principal_name(user1, user1, "test-user")) {
-            case (#err(e)) { Debug.trap("Failed to set principal name: " # e) };
-            case (#ok()) {};
+            case (#Err(e)) { Debug.trap("Failed to set principal name: " # debug_show(e)) };
+            case (#Ok()) {};
         };
 
         // Verify principal name was set
@@ -441,8 +441,8 @@ do {
 
         // Test setting name for another principal (should fail)
         switch(await* name_index.set_principal_name(user2, user1, "another-name")) {
-            case (#err(_)) {}; // Expected error
-            case (#ok()) { Debug.trap("Should not be able to set name for another principal") };
+            case (#Err(_)) {}; // Expected error
+            case (#Ok()) { Debug.trap("Should not be able to set name for another principal") };
         };
 
         Debug.print("✓ Name management tests passed");
@@ -491,20 +491,20 @@ do {
 
         // Grant ban permissions to user1
         switch(permissions.grant_permission(admin1, user1, BanPermissions.BAN_USER, null)) {
-            case (#err(e)) { Debug.trap("Failed to grant ban permission: " # e) };
-            case (#ok()) {};
+            case (#Err(e)) { Debug.trap("Failed to grant ban permission: " # debug_show(e)) };
+            case (#Ok()) {};
         };
 
         // Grant unban permission to admin1
         switch(permissions.grant_permission(admin1, admin1, BanPermissions.UNBAN_USER, null)) {
-            case (#err(e)) { Debug.trap("Failed to grant unban permission: " # e) };
-            case (#ok()) {};
+            case (#Err(e)) { Debug.trap("Failed to grant unban permission: " # debug_show(e)) };
+            case (#Ok()) {};
         };
 
         // Grant manage ban settings permission to admin1
         switch(permissions.grant_permission(admin1, admin1, BanPermissions.MANAGE_BAN_SETTINGS, null)) {
-            case (#err(e)) { Debug.trap("Failed to grant manage ban settings permission: " # e) };
-            case (#ok()) {};
+            case (#Err(e)) { Debug.trap("Failed to grant manage ban settings permission: " # debug_show(e)) };
+            case (#Ok()) {};
         };
 
         // Test banning a user
@@ -605,20 +605,20 @@ do {
 
         // Grant permissions to user1
         switch(permissions.grant_permission(admin1, user1, NamePermissions.EDIT_ANY_NAME, null)) {
-            case (#err(e)) { Debug.trap("Failed to grant name permission: " # e) };
-            case (#ok()) {};
+            case (#Err(e)) { Debug.trap("Failed to grant name permission: " # debug_show(e)) };
+            case (#Ok()) {};
         };
 
         // Grant ban permissions to admin1
         switch(permissions.grant_permission(admin1, admin1, BanPermissions.BAN_USER, null)) {
-            case (#err(e)) { Debug.trap("Failed to grant ban permission: " # e) };
-            case (#ok()) {};
+            case (#Err(e)) { Debug.trap("Failed to grant ban permission: " # debug_show(e)) };
+            case (#Ok()) {};
         };
 
         // Verify user1 can set names before being banned
         switch(await* name_index.set_principal_name(user1, user2, "test-name")) {
-            case (#err(e)) { Debug.trap("Failed to set name before ban: " # e) };
-            case (#ok()) {};
+            case (#Err(e)) { Debug.trap("Failed to set name before ban: " # debug_show(e)) };
+            case (#Ok()) {};
         };
 
         // Ban user1
@@ -629,8 +629,8 @@ do {
 
         // Verify banned user1 cannot set names despite having permission
         switch(await* name_index.set_principal_name(user1, user2, "another-name")) {
-            case (#err(_)) {}; // Expected error
-            case (#ok()) { Debug.trap("Banned user should not be able to set names") };
+            case (#Err(_)) {}; // Expected error
+            case (#Ok()) { Debug.trap("Banned user should not be able to set names") };
         };
 
         // Create mock SNS governance
@@ -644,14 +644,14 @@ do {
             "test-neuron",
             mock_governance
         )) {
-            case (#err(_)) {}; // Expected error
-            case (#ok()) { Debug.trap("Banned user should not be able to set neuron names") };
+            case (#Err(_)) {}; // Expected error
+            case (#Ok()) { Debug.trap("Banned user should not be able to set neuron names") };
         };
 
         // Grant unban permission to admin1
         switch(permissions.grant_permission(admin1, admin1, BanPermissions.UNBAN_USER, null)) {
-            case (#err(e)) { Debug.trap("Failed to grant unban permission: " # e) };
-            case (#ok()) {};
+            case (#Err(e)) { Debug.trap("Failed to grant unban permission: " # debug_show(e)) };
+            case (#Ok()) {};
         };
 
         // Unban user1
@@ -662,8 +662,8 @@ do {
 
         // Verify user1 can set names again after unban
         switch(await* name_index.set_principal_name(user1, user2, "post-ban-name")) {
-            case (#err(e)) { Debug.trap("Failed to set name after unban: " # e) };
-            case (#ok()) {};
+            case (#Err(e)) { Debug.trap("Failed to set name after unban: " # debug_show(e)) };
+            case (#Ok()) {};
         };
 
         Debug.print("✓ Ban integration tests passed");
