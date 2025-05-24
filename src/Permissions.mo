@@ -8,9 +8,48 @@ import Nat32 "mo:base/Nat32";
 import Array "mo:base/Array";
 import Dedup "mo:dedup";
 import Bans "./Bans";
+import Vector "mo:vector";
+import Int "mo:base/Int";
+import Buffer "mo:base/Buffer";
 
 // We need module name "Permissions" to allow class methods to refer to them when they would otherwise have a name conflict.
 module Permissions {
+    // Ban-related types
+    public type BanLogEntry = {
+        user: Nat32;  // Deduped user principal index
+        admin: Nat32;  // Deduped admin principal index
+        ban_timestamp: Int;
+        expiry_timestamp: Int;
+        reason: Text;
+    };
+
+    public type BanDurationSetting = {
+        offence_count: Nat;  // Number of offences this duration applies to
+        duration_hours: Nat;  // Ban duration in hours
+    };
+
+    public type BanSettings = {
+        min_ban_duration_hours: Nat;  // Minimum ban duration for any offense
+        duration_settings: Vector.Vector<BanDurationSetting>;  // Ordered by offence_count
+    };
+
+    public type BanState = {
+        var ban_log: Vector.Vector<BanLogEntry>;
+        var banned_users: Map.Map<Nat32, Int>;  // Deduped user index -> Expiry timestamp
+        var settings: BanSettings;
+    };
+
+    // Default ban durations
+    private let DEFAULT_MIN_BAN_DURATION = 1;  // 1 hour
+    private let DEFAULT_DURATIONS = [
+        { offence_count = 2; duration_hours = 24 },      // Second ban: 24 hours
+        { offence_count = 3; duration_hours = 168 },     // Third ban: 1 week
+        { offence_count = 4; duration_hours = 720 },     // Fourth ban: 1 month
+        { offence_count = 5; duration_hours = 8760 },    // Fifth ban: 1 year
+        { offence_count = 6; duration_hours = 876000 },  // Sixth+ ban: 100 years
+    ];
+
+    // Permission-related types
     public type BanChecker = Principal -> Bool;
 
     public type PermissionMetadata = {
@@ -29,6 +68,7 @@ module Permissions {
     public type StablePermissionState = {
         var admins : Map.Map<Nat32, PermissionMetadata>;  // Admin index -> Metadata
         var principal_permissions : Map.Map<Nat32, Map.Map<Nat32, PermissionMetadata>>;  // Principal index -> Permission index -> Metadata
+        var ban_state : BanState;  // Ban system state
     };
 
     // Non-stable state includes permission types that are registered on start
@@ -37,12 +77,16 @@ module Permissions {
         principal_permissions : Map.Map<Nat32, Map.Map<Nat32, PermissionMetadata>>;  // Principal index -> Permission index -> Metadata
         var permission_types : Map.Map<Nat32, PermissionType>;  // Permission index -> Type info
         dedup : Dedup.Dedup;  // For principal -> index and text -> index conversion
-        var ban_checker : ?BanChecker;  // Optional function to check if users are banned
+        ban_state : BanState;  // Ban system state
+        ban_checker : Principal -> Bool;  // Function to check if a principal is banned
     };
 
     // Built-in permission type keys
     public let ADD_ADMIN_PERMISSION = "add_admin";
     public let REMOVE_ADMIN_PERMISSION = "remove_admin";
+    public let BAN_USER = "ban_user";
+    public let UNBAN_USER = "unban_user";
+    public let MANAGE_BAN_SETTINGS = "manage_ban_settings";
 
     // Helper function to convert text to index
     private func text_to_index(text : Text, dedup : Dedup.Dedup) : Nat32 {
@@ -52,102 +96,77 @@ module Permissions {
 
     public func empty() : PermissionState {
         let dedup = Dedup.Dedup(?Dedup.empty());
-        let state = {
+        let default_settings = Vector.new<BanDurationSetting>();
+        for (setting in DEFAULT_DURATIONS.vals()) {
+            Vector.add(default_settings, setting);
+        };
+        {
             admins = Map.new<Nat32, PermissionMetadata>();
             principal_permissions = Map.new<Nat32, Map.Map<Nat32, PermissionMetadata>>();
             var permission_types = Map.new<Nat32, PermissionType>();
             dedup = dedup;
-            var ban_checker = (null : ?BanChecker);
+            ban_state = {
+                var ban_log = Vector.new<BanLogEntry>();
+                var banned_users = Map.new<Nat32, Int>();
+                var settings = {
+                    min_ban_duration_hours = DEFAULT_MIN_BAN_DURATION;
+                    duration_settings = default_settings;
+                };
+            };
+            ban_checker = func(_ : Principal) : Bool { false };
         };
-
-        // Add built-in permission types
-        let add_admin_index = text_to_index(ADD_ADMIN_PERMISSION, dedup);
-        let remove_admin_index = text_to_index(REMOVE_ADMIN_PERMISSION, dedup);
-        
-        let add_admin_type : PermissionType = {
-            description = "Can add new admins";
-            max_duration = ?(365 * 24 * 60 * 60 * 1_000_000_000);  // 1 year max
-            default_duration = ?(30 * 24 * 60 * 60 * 1_000_000_000);  // 30 days default
-        };
-        let remove_admin_type : PermissionType = {
-            description = "Can remove admins";
-            max_duration = ?(365 * 24 * 60 * 60 * 1_000_000_000);  // 1 year max
-            default_duration = ?(30 * 24 * 60 * 60 * 1_000_000_000);  // 30 days default
-        };
-
-        Map.set(state.permission_types, (func (n : Nat32) : Nat32 { n }, Nat32.equal), add_admin_index, add_admin_type);
-        Map.set(state.permission_types, (func (n : Nat32) : Nat32 { n }, Nat32.equal), remove_admin_index, remove_admin_type);
-
-        state
     };
 
     public func empty_stable() : StablePermissionState {
+        let default_settings = Vector.new<BanDurationSetting>();
+        for (setting in DEFAULT_DURATIONS.vals()) {
+            Vector.add(default_settings, setting);
+        };
         {
             var admins = Map.new<Nat32, PermissionMetadata>();
             var principal_permissions = Map.new<Nat32, Map.Map<Nat32, PermissionMetadata>>();
-        }
+            var ban_state = {
+                var ban_log = Vector.new<BanLogEntry>();
+                var banned_users = Map.new<Nat32, Int>();
+                var settings = {
+                    min_ban_duration_hours = DEFAULT_MIN_BAN_DURATION;
+                    duration_settings = default_settings;
+                };
+            };
+        };
     };
 
-    // Create new state with existing dedup
-    public func from_dedup(dedup : Dedup.Dedup) : PermissionState {
-        let state = {
+    public func from_dedup(dedup : Dedup.Dedup, ban_checker : Principal -> Bool) : PermissionState {
+        let default_settings = Vector.new<BanDurationSetting>();
+        for (setting in DEFAULT_DURATIONS.vals()) {
+            Vector.add(default_settings, setting);
+        };
+        {
             admins = Map.new<Nat32, PermissionMetadata>();
             principal_permissions = Map.new<Nat32, Map.Map<Nat32, PermissionMetadata>>();
             var permission_types = Map.new<Nat32, PermissionType>();
             dedup = dedup;
-            var ban_checker = (null : ?BanChecker);
+            ban_state = {
+                var ban_log = Vector.new<BanLogEntry>();
+                var banned_users = Map.new<Nat32, Int>();
+                var settings = {
+                    min_ban_duration_hours = DEFAULT_MIN_BAN_DURATION;
+                    duration_settings = default_settings;
+                };
+            };
+            ban_checker = ban_checker;
         };
-
-        // Add built-in permission types
-        let add_admin_index = text_to_index(ADD_ADMIN_PERMISSION, dedup);
-        let remove_admin_index = text_to_index(REMOVE_ADMIN_PERMISSION, dedup);
-        
-        let add_admin_type : PermissionType = {
-            description = "Can add new admins";
-            max_duration = ?(365 * 24 * 60 * 60 * 1_000_000_000);  // 1 year max
-            default_duration = ?(30 * 24 * 60 * 60 * 1_000_000_000);  // 30 days default
-        };
-        let remove_admin_type : PermissionType = {
-            description = "Can remove admins";
-            max_duration = ?(365 * 24 * 60 * 60 * 1_000_000_000);  // 1 year max
-            default_duration = ?(30 * 24 * 60 * 60 * 1_000_000_000);  // 30 days default
-        };
-
-        Map.set(state.permission_types, (func (n : Nat32) : Nat32 { n }, Nat32.equal), add_admin_index, add_admin_type);
-        Map.set(state.permission_types, (func (n : Nat32) : Nat32 { n }, Nat32.equal), remove_admin_index, remove_admin_type);
-
-        state
     };
 
-    // Create a new PermissionState from stable state, using provided dedup
-    public func from_stable(stable_state : StablePermissionState, dedup : Dedup.Dedup) : PermissionState {
-        let state = {
+    public func from_stable(stable_state : StablePermissionState, dedup : Dedup.Dedup, ban_checker : Principal -> Bool) : PermissionState {
+        {
             admins = stable_state.admins;
             principal_permissions = stable_state.principal_permissions;
             var permission_types = Map.new<Nat32, PermissionType>();
             dedup = dedup;
-            var ban_checker = (null : ?BanChecker);
+            ban_state = stable_state.ban_state;
+            ban_checker = ban_checker;
         };
-
-        // Re-add built-in permission types
-        let add_admin_index = text_to_index(ADD_ADMIN_PERMISSION, dedup);
-        let remove_admin_index = text_to_index(REMOVE_ADMIN_PERMISSION, dedup);
-        
-        let add_admin_type : PermissionType = {
-            description = "Can add new admins";
-            max_duration = ?(365 * 24 * 60 * 60 * 1_000_000_000);  // 1 year max
-            default_duration = ?(30 * 24 * 60 * 60 * 1_000_000_000);  // 30 days default
-        };
-        let remove_admin_type : PermissionType = {
-            description = "Can remove admins";
-            max_duration = ?(365 * 24 * 60 * 60 * 1_000_000_000);  // 1 year max
-            default_duration = ?(30 * 24 * 60 * 60 * 1_000_000_000);  // 30 days default
-        };
-
-        Map.set(state.permission_types, (func (n : Nat32) : Nat32 { n }, Nat32.equal), add_admin_index, add_admin_type);
-        Map.set(state.permission_types, (func (n : Nat32) : Nat32 { n }, Nat32.equal), remove_admin_index, remove_admin_type);
-
-        state
     };
 
     public func is_admin(principal : Principal, state : PermissionState) : Bool {
@@ -155,10 +174,11 @@ module Permissions {
             return true;
         };
 
-        // Check if user is banned first if we have a ban checker
-        switch (state.ban_checker) {
-            case (?check_banned) {
-                if (check_banned(principal)) {
+        // Check if user is banned
+        let user_index = state.dedup.getOrCreateIndexForPrincipal(principal);
+        switch (Map.get(state.ban_state.banned_users, (func (n : Nat32) : Nat32 { n }, Nat32.equal), user_index)) {
+            case (?expiry) {
+                if (expiry > Time.now()) {
                     return false;
                 };
             };
@@ -182,14 +202,9 @@ module Permissions {
     };
 
     public func check_permission(principal : Principal, permission : Text, state : PermissionState) : Bool {
-        // Check if user is banned first if we have a ban checker
-        switch (state.ban_checker) {
-            case (?check_banned) {
-                if (check_banned(principal)) {
-                    return false;
-                };
-            };
-            case null {};
+        // Check if user is banned
+        if (state.ban_checker(principal)) {
+            return false;
         };
 
         // Admins have all permissions
@@ -364,15 +379,303 @@ module Permissions {
                 Map.delete(state.principal_permissions, (func (n : Nat32) : Nat32 { n }, Nat32.equal), principal_index);
             };
         };
+
+        // Cleanup expired bans
+        let now_int = Time.now();
+        let ban_entries = Map.entries(state.ban_state.banned_users);
+        for ((index, expiry) in ban_entries) {
+            if (expiry <= now_int) {
+                Map.delete(state.ban_state.banned_users, (func (n : Nat32) : Nat32 { n }, Nat32.equal), index);
+            };
+        };
+    };
+
+    public func is_banned(principal : Principal, state : PermissionState) : Bool {
+        let user_index = state.dedup.getOrCreateIndexForPrincipal(principal);
+        switch (Map.get(state.ban_state.banned_users, (func (n : Nat32) : Nat32 { n }, Nat32.equal), user_index)) {
+            case (?expiry) {
+                // Check if ban has expired
+                if (expiry <= Time.now()) {
+                    Map.delete(state.ban_state.banned_users, (func (n : Nat32) : Nat32 { n }, Nat32.equal), user_index);
+                    false
+                } else {
+                    true
+                };
+            };
+            case null { false };
+        };
     };
 
     public class PermissionsManager(state : PermissionState) {
-        public func set_ban_checker(checker : BanChecker) {
-            state.ban_checker := ?checker;
+        let nat32Utils = (func (n : Nat32) : Nat32 { n }, Nat32.equal);
+
+        // Helper to calculate ban duration based on offense count
+        private func calculate_ban_duration(user: Nat32) : Nat {
+            let offense_count = count_offenses(user);
+            
+            // Find the highest matching duration setting
+            let settings = Vector.toArray(state.ban_state.settings.duration_settings);
+            var duration = state.ban_state.settings.min_ban_duration_hours;
+            
+            for (setting in settings.vals()) {
+                if (offense_count >= setting.offence_count) {
+                    duration := setting.duration_hours;
+                };
+            };
+            
+            duration
+        };
+
+        // Helper to count total offenses for a user
+        private func count_offenses(user: Nat32) : Nat {
+            let log = Vector.toArray(state.ban_state.ban_log);
+            var count = 0;
+            for (entry in log.vals()) {
+                if (entry.user == user) {
+                    count += 1;
+                };
+            };
+            count
+        };
+
+        // Check if a user is banned
+        public func is_banned(principal : Principal) : Bool {
+            Permissions.is_banned(principal, state);
         };
 
         public func check_permission(principal : Principal, permission : Text) : Bool {
             Permissions.check_permission(principal, permission, state);
+        };
+
+        public func ban_user(
+            caller : Principal,
+            user : Principal,
+            duration_hours : ?Nat,
+            reason : Text
+        ) : Result.Result<(), Text> {
+            if (not check_permission(caller, BAN_USER)) {
+                return #err("Not authorized to ban users");
+            };
+
+            // Cannot ban admins
+            if (Principal.isController(user) or check_permission(user, ADD_ADMIN_PERMISSION)) {
+                return #err("Cannot ban admins");
+            };
+
+            // Convert principals to indices
+            let caller_index = state.dedup.getOrCreateIndexForPrincipal(caller);
+            let user_index = state.dedup.getOrCreateIndexForPrincipal(user);
+
+            // Calculate ban duration
+            let hours = switch (duration_hours) {
+                case (?h) { h };
+                case null { calculate_ban_duration(user_index) };
+            };
+
+            // Calculate expiry timestamp
+            let now = Time.now();
+            let expiry = now + (Int.abs(hours) * 3600 * 1_000_000_000);
+
+            // Create ban log entry
+            let entry : BanLogEntry = {
+                user = user_index;
+                admin = caller_index;
+                ban_timestamp = now;
+                expiry_timestamp = expiry;
+                reason = reason;
+            };
+
+            // Add to ban log and active bans
+            Vector.add(state.ban_state.ban_log, entry);
+            Map.set(state.ban_state.banned_users, nat32Utils, user_index, expiry);
+
+            #ok(());
+        };
+
+        public func unban_user(
+            caller : Principal,
+            user : Principal
+        ) : Result.Result<(), Text> {
+            if (not check_permission(caller, UNBAN_USER)) {
+                return #err("Not authorized to unban users");
+            };
+
+            let user_index = state.dedup.getOrCreateIndexForPrincipal(user);
+            let caller_index = state.dedup.getOrCreateIndexForPrincipal(caller);
+
+            // Add unban entry to log with immediate expiry
+            let entry : BanLogEntry = {
+                user = user_index;
+                admin = caller_index;
+                ban_timestamp = Time.now();
+                expiry_timestamp = Time.now();  // Immediate expiry
+                reason = "Manual unban";
+            };
+
+            Vector.add(state.ban_state.ban_log, entry);
+            Map.delete(state.ban_state.banned_users, nat32Utils, user_index);
+
+            #ok(());
+        };
+
+        public func check_ban_status(user : Principal) : Result.Result<Text, Text> {
+            if (not is_banned(user)) {
+                return #err("User is not banned");
+            };
+
+            let user_index = state.dedup.getOrCreateIndexForPrincipal(user);
+            switch (Map.get(state.ban_state.banned_users, nat32Utils, user_index)) {
+                case (?expiry) {
+                    let remaining = expiry - Time.now();
+                    let hours = remaining / (3600 * 1_000_000_000);
+                    #ok("User is banned for " # Int.toText(hours) # " more hours");
+                };
+                case null {
+                    #err("User is not banned");
+                };
+            };
+        };
+
+        public func get_ban_log(
+            caller : Principal
+        ) : Result.Result<[{
+            user : Principal;
+            admin : Principal;
+            ban_timestamp : Int;
+            expiry_timestamp : Int;
+            reason : Text;
+        }], Text> {
+            if (not check_permission(caller, MANAGE_BAN_SETTINGS)) {
+                return #err("Not authorized to view ban log");
+            };
+
+            let log = Vector.toArray(state.ban_state.ban_log);
+            let result = Buffer.Buffer<{
+                user : Principal;
+                admin : Principal;
+                ban_timestamp : Int;
+                expiry_timestamp : Int;
+                reason : Text;
+            }>(Array.size(log));
+
+            for (entry in log.vals()) {
+                switch (state.dedup.getPrincipalForIndex(entry.user)) {
+                    case (?user) {
+                        switch (state.dedup.getPrincipalForIndex(entry.admin)) {
+                            case (?admin) {
+                                result.add({
+                                    user = user;
+                                    admin = admin;
+                                    ban_timestamp = entry.ban_timestamp;
+                                    expiry_timestamp = entry.expiry_timestamp;
+                                    reason = entry.reason;
+                                });
+                            };
+                            case null {};
+                        };
+                    };
+                    case null {};
+                };
+            };
+
+            #ok(Buffer.toArray(result));
+        };
+
+        public func get_banned_users(caller : Principal) : Result.Result<[(Principal, Int)], Text> {
+            if (not check_permission(caller, MANAGE_BAN_SETTINGS)) {
+                return #err("Not authorized to view banned users");
+            };
+
+            let entries = Map.entries(state.ban_state.banned_users);
+            let result = Buffer.Buffer<(Principal, Int)>(Map.size(state.ban_state.banned_users));
+
+            for ((index, expiry) in entries) {
+                switch (state.dedup.getPrincipalForIndex(index)) {
+                    case (?principal) {
+                        result.add((principal, expiry));
+                    };
+                    case null {};
+                };
+            };
+
+            #ok(Buffer.toArray(result));
+        };
+
+        public func get_user_ban_history(
+            caller : Principal,
+            user : Principal
+        ) : Result.Result<[{
+            admin : Principal;
+            ban_timestamp : Int;
+            expiry_timestamp : Int;
+            reason : Text;
+        }], Text> {
+            if (not check_permission(caller, MANAGE_BAN_SETTINGS)) {
+                return #err("Not authorized to view ban history");
+            };
+
+            let user_index = state.dedup.getOrCreateIndexForPrincipal(user);
+            let log = Vector.toArray(state.ban_state.ban_log);
+            let result = Buffer.Buffer<{
+                admin : Principal;
+                ban_timestamp : Int;
+                expiry_timestamp : Int;
+                reason : Text;
+            }>(Array.size(log));
+
+            for (entry in log.vals()) {
+                if (entry.user == user_index) {
+                    switch (state.dedup.getPrincipalForIndex(entry.admin)) {
+                        case (?admin) {
+                            result.add({
+                                admin = admin;
+                                ban_timestamp = entry.ban_timestamp;
+                                expiry_timestamp = entry.expiry_timestamp;
+                                reason = entry.reason;
+                            });
+                        };
+                        case null {};
+                    };
+                };
+            };
+
+            #ok(Buffer.toArray(result));
+        };
+
+        public func update_ban_settings(
+            caller : Principal,
+            settings : BanSettings
+        ) : Result.Result<(), Text> {
+            if (not check_permission(caller, MANAGE_BAN_SETTINGS)) {
+                return #err("Not authorized to manage ban settings");
+            };
+
+            // Validate settings
+            let durations = Vector.toArray(settings.duration_settings);
+            if (durations.size() == 0) {
+                return #err("Must provide at least one duration setting");
+            };
+
+            // Verify durations increase with offense count
+            var last_count = 0;
+            var last_duration = settings.min_ban_duration_hours;
+            for (setting in durations.vals()) {
+                if (setting.offence_count <= last_count) {
+                    return #err("Offense counts must be strictly increasing");
+                };
+                if (setting.duration_hours < last_duration) {
+                    return #err("Durations must increase with offense count");
+                };
+                last_count := setting.offence_count;
+                last_duration := setting.duration_hours;
+            };
+
+            state.ban_state.settings := settings;
+            #ok(());
+        };
+
+        public func cleanup_expired() {
+            cleanup_expired_permissions(state);
         };
 
         public func is_admin(principal : Principal) : Bool {
@@ -446,10 +749,6 @@ module Permissions {
 
         public func revoke_permission(caller : Principal, target : Principal, permission : Text) : Result.Result<(), Text> {
             Permissions.revoke_permission(caller, target, permission, state);
-        };
-
-        public func cleanup_expired() {
-            cleanup_expired_permissions(state);
         };
     };
 }
