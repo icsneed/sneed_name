@@ -1086,15 +1086,16 @@ do {
         Debug.print("Testing ICRC1 account naming...");
 
         // Set up base permissions
-        let state = Permissions.empty();
+        let stable_state = Permissions.empty_stable();
+        let permissions = Permissions.PermissionsManager(stable_state);
+        
         let admin_metadata : Permissions.PermissionMetadata = {
             created_by = admin1;
             created_at = Nat64.fromIntWrap(Time.now());
             expires_at = null;
         };
-        let admin1_index = state.dedup.getOrCreateIndexForPrincipal(admin1);
-        Map.set(state.admins, (func (n : Nat32) : Nat32 { n }, Nat32.equal), admin1_index, admin_metadata);
-        let permissions = Permissions.PermissionsManager(state);
+        let admin1_index = permissions.get_dedup().getOrCreateIndexForPrincipal(admin1);
+        Map.set(stable_state.admins, (func (n : Nat32) : Nat32 { n }, Nat32.equal), admin1_index, admin_metadata);
 
         // Add account permission types
         switch(NamePermissions.add_name_permissions(permissions)) {
@@ -1187,15 +1188,16 @@ do {
         Debug.print("Testing banned words...");
 
         // Set up base permissions
-        let state = Permissions.empty();
+        let stable_state = Permissions.empty_stable();
+        let permissions = Permissions.PermissionsManager(stable_state);
+        
         let admin_metadata : Permissions.PermissionMetadata = {
             created_by = admin1;
             created_at = Nat64.fromIntWrap(Time.now());
             expires_at = null;
         };
-        let admin1_index = state.dedup.getOrCreateIndexForPrincipal(admin1);
-        Map.set(state.admins, (func (n : Nat32) : Nat32 { n }, Nat32.equal), admin1_index, admin_metadata);
-        let permissions = Permissions.PermissionsManager(state);
+        let admin1_index = permissions.get_dedup().getOrCreateIndexForPrincipal(admin1);
+        Map.set(stable_state.admins, (func (n : Nat32) : Nat32 { n }, Nat32.equal), admin1_index, admin_metadata);
 
         // Add all required permission types
         switch(NamePermissions.add_name_permissions(permissions)) {
@@ -1348,15 +1350,16 @@ do {
         Debug.print("Testing edge cases and input validation...");
 
         // Set up base permissions
-        let state = Permissions.empty();
+        let stable_state = Permissions.empty_stable();
+        let permissions = Permissions.PermissionsManager(stable_state);
+        
         let admin_metadata : Permissions.PermissionMetadata = {
             created_by = admin1;
             created_at = Nat64.fromIntWrap(Time.now());
             expires_at = null;
         };
-        let admin1_index = state.dedup.getOrCreateIndexForPrincipal(admin1);
-        Map.set(state.admins, (func (n : Nat32) : Nat32 { n }, Nat32.equal), admin1_index, admin_metadata);
-        let permissions = Permissions.PermissionsManager(state);
+        let admin1_index = permissions.get_dedup().getOrCreateIndexForPrincipal(admin1);
+        Map.set(stable_state.admins, (func (n : Nat32) : Nat32 { n }, Nat32.equal), admin1_index, admin_metadata);
 
         // Add all required permission types
         switch(NamePermissions.add_name_permissions(permissions)) {
@@ -1421,15 +1424,16 @@ do {
     shared func test_permission_expiration() : async () {
         Debug.print("Testing permission expiration scenarios...");
 
-        let state = Permissions.empty();
+        let stable_state = Permissions.empty_stable();
+        let permissions = Permissions.PermissionsManager(stable_state);
+        
         let admin_metadata : Permissions.PermissionMetadata = {
             created_by = admin1;
             created_at = Nat64.fromIntWrap(Time.now());
             expires_at = null;
         };
-        let admin1_index = state.dedup.getOrCreateIndexForPrincipal(admin1);
-        Map.set(state.admins, (func (n : Nat32) : Nat32 { n }, Nat32.equal), admin1_index, admin_metadata);
-        let permissions = Permissions.PermissionsManager(state);
+        let admin1_index = permissions.get_dedup().getOrCreateIndexForPrincipal(admin1);
+        Map.set(stable_state.admins, (func (n : Nat32) : Nat32 { n }, Nat32.equal), admin1_index, admin_metadata);
 
         // Add permission types with specific durations
         switch(NamePermissions.add_name_permissions(permissions)) {
@@ -1465,15 +1469,16 @@ do {
     shared func test_concurrent_operations() : async () {
         Debug.print("Testing concurrent operations...");
 
-        let state = Permissions.empty();
+        let stable_state = Permissions.empty_stable();
+        let permissions = Permissions.PermissionsManager(stable_state);
+        
         let admin_metadata : Permissions.PermissionMetadata = {
             created_by = admin1;
             created_at = Nat64.fromIntWrap(Time.now());
             expires_at = null;
         };
-        let admin1_index = state.dedup.getOrCreateIndexForPrincipal(admin1);
-        Map.set(state.admins, (func (n : Nat32) : Nat32 { n }, Nat32.equal), admin1_index, admin_metadata);
-        let permissions = Permissions.PermissionsManager(state);
+        let admin1_index = permissions.get_dedup().getOrCreateIndexForPrincipal(admin1);
+        Map.set(stable_state.admins, (func (n : Nat32) : Nat32 { n }, Nat32.equal), admin1_index, admin_metadata);
 
         switch(NamePermissions.add_name_permissions(permissions)) {
             case (#Err(e)) { Debug.trap("Failed to add permission types: " # debug_show(e)) };
@@ -1507,15 +1512,16 @@ do {
     shared func test_banned_words_advanced() : async () {
         Debug.print("Testing advanced banned words scenarios...");
 
-        let state = Permissions.empty();
+        let stable_state = Permissions.empty_stable();
+        let permissions = Permissions.PermissionsManager(stable_state);
+        
         let admin_metadata : Permissions.PermissionMetadata = {
             created_by = admin1;
             created_at = Nat64.fromIntWrap(Time.now());
             expires_at = null;
         };
-        let admin1_index = state.dedup.getOrCreateIndexForPrincipal(admin1);
-        Map.set(state.admins, (func (n : Nat32) : Nat32 { n }, Nat32.equal), admin1_index, admin_metadata);
-        let permissions = Permissions.PermissionsManager(state);
+        let admin1_index = permissions.get_dedup().getOrCreateIndexForPrincipal(admin1);
+        Map.set(stable_state.admins, (func (n : Nat32) : Nat32 { n }, Nat32.equal), admin1_index, admin_metadata);
 
         switch(NamePermissions.add_name_permissions(permissions)) {
             case (#Err(e)) { Debug.trap("Failed to add permission types: " # debug_show(e)) };
@@ -1590,15 +1596,16 @@ do {
     shared func test_account_naming_edge_cases() : async () {
         Debug.print("Testing account naming edge cases...");
 
-        let state = Permissions.empty();
+        let stable_state = Permissions.empty_stable();
+        let permissions = Permissions.PermissionsManager(stable_state);
+        
         let admin_metadata : Permissions.PermissionMetadata = {
             created_by = admin1;
             created_at = Nat64.fromIntWrap(Time.now());
             expires_at = null;
         };
-        let admin1_index = state.dedup.getOrCreateIndexForPrincipal(admin1);
-        Map.set(state.admins, (func (n : Nat32) : Nat32 { n }, Nat32.equal), admin1_index, admin_metadata);
-        let permissions = Permissions.PermissionsManager(state);
+        let admin1_index = permissions.get_dedup().getOrCreateIndexForPrincipal(admin1);
+        Map.set(stable_state.admins, (func (n : Nat32) : Nat32 { n }, Nat32.equal), admin1_index, admin_metadata);
 
         switch(NamePermissions.add_name_permissions(permissions)) {
             case (#Err(e)) { Debug.trap("Failed to add permission types: " # debug_show(e)) };
@@ -1673,15 +1680,16 @@ do {
     shared func test_name_settings() : async () {
         Debug.print("Testing name settings management...");
 
-        let state = Permissions.empty();
+        let stable_state = Permissions.empty_stable();
+        let permissions = Permissions.PermissionsManager(stable_state);
+        
         let admin_metadata : Permissions.PermissionMetadata = {
             created_by = admin1;
             created_at = Nat64.fromIntWrap(Time.now());
             expires_at = null;
         };
-        let admin1_index = state.dedup.getOrCreateIndexForPrincipal(admin1);
-        Map.set(state.admins, (func (n : Nat32) : Nat32 { n }, Nat32.equal), admin1_index, admin_metadata);
-        let permissions = Permissions.PermissionsManager(state);
+        let admin1_index = permissions.get_dedup().getOrCreateIndexForPrincipal(admin1);
+        Map.set(stable_state.admins, (func (n : Nat32) : Nat32 { n }, Nat32.equal), admin1_index, admin_metadata);
 
         switch(NamePermissions.add_name_permissions(permissions)) {
             case (#Err(e)) { Debug.trap("Failed to add permission types: " # debug_show(e)) };
