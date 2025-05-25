@@ -29,8 +29,8 @@ module {
     };
 
     public type NameIndexState = {
-        name_to_index : Map.Map<Nat32, Name>;
-        index_to_name : Map.Map<Text, Nat32>;
+        index_to_name : Map.Map<Nat32, Name>;
+        name_to_index : Map.Map<Text, Nat32>;
         blacklisted_words : Map.Map<Text, Name>;
         var name_settings : NameSettings;
         // todo blacklisted words, admins, banned users

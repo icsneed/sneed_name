@@ -34,8 +34,8 @@ module {
 
     public func empty_stable() : T.NameIndexState {
         {
-            name_to_index = Map.new<Nat32, T.Name>();
-            index_to_name = Map.new<Text, Nat32>();
+            index_to_name = Map.new<Nat32, T.Name>();
+            name_to_index = Map.new<Text, Nat32>();
             blacklisted_words = Map.new<Text, T.Name>();
             var name_settings = {
                 min_length = 1;
@@ -129,7 +129,7 @@ module {
 
         public func get_principal_name(principal : Principal) : ?T.Name {
             let index = dedup.getOrCreateIndexForPrincipal(principal);
-            Map.get(state.name_to_index, nat32Utils, index);
+            Map.get(state.index_to_name, nat32Utils, index);
         };
 
         public func set_principal_name(caller : Principal, principal : Principal, name : Text) : async* T.NameResult<()> {
@@ -184,7 +184,7 @@ module {
             let name_lower = Text.toLowercase(name);
             
             // Check if name is already taken by someone else
-            switch (Map.get(state.index_to_name, textUtils, name_lower)) {
+            switch (Map.get(state.name_to_index, textUtils, name_lower)) {
                 case (?existing_index) {
                     let target_index = dedup.getOrCreateIndexForPrincipal(principal);
                     if (existing_index != target_index) {
@@ -199,7 +199,7 @@ module {
             let now = Nat64.fromIntWrap(Time.now());
             
             // Get existing record if any
-            let name_record = switch (Map.get(state.name_to_index, nat32Utils, index)) {
+            let name_record = switch (Map.get(state.index_to_name, nat32Utils, index)) {
                 case (?existing) {
                     // If the name is changing, unverify it
                     let should_unverify = existing.name != name;
@@ -226,16 +226,16 @@ module {
             };
             
             // Remove old name from inverse map if it exists
-            switch (Map.get(state.name_to_index, nat32Utils, index)) {
+            switch (Map.get(state.index_to_name, nat32Utils, index)) {
                 case (?old_record) {
-                    Map.delete(state.index_to_name, textUtils, Text.toLowercase(old_record.name));
+                    Map.delete(state.name_to_index, textUtils, Text.toLowercase(old_record.name));
                 };
                 case null {};
             };
 
             // Set new mappings
-            Map.set(state.name_to_index, nat32Utils, index, name_record);
-            Map.set(state.index_to_name, textUtils, name_lower, index);
+            Map.set(state.index_to_name, nat32Utils, index, name_record);
+            Map.set(state.name_to_index, textUtils, name_lower, index);
             return #Ok(());
         };
 
@@ -249,7 +249,7 @@ module {
 
         // Helper functions for reverse lookups
         public func get_name_principal(name : Text) : ?Principal {
-            switch (Map.get(state.index_to_name, textUtils, Text.toLowercase(name))) {
+            switch (Map.get(state.name_to_index, textUtils, Text.toLowercase(name))) {
                 case (?index) {
                     dedup.getPrincipalForIndex(index);
                 };
@@ -258,7 +258,7 @@ module {
         };
 
         public func is_name_taken(name : Text) : Bool {
-            switch (Map.get(state.index_to_name, textUtils, Text.toLowercase(name))) {
+            switch (Map.get(state.name_to_index, textUtils, Text.toLowercase(name))) {
                 case (?_) { true };
                 case null { false };
             };
@@ -266,9 +266,9 @@ module {
 
         // Helper function to get full name record by name
         public func get_name_record(name : Text) : ?T.Name {
-            switch (Map.get(state.index_to_name, textUtils, Text.toLowercase(name))) {
+            switch (Map.get(state.name_to_index, textUtils, Text.toLowercase(name))) {
                 case (?index) {
-                    Map.get(state.name_to_index, nat32Utils, index);
+                    Map.get(state.index_to_name, nat32Utils, index);
                 };
                 case null { null };
             };
@@ -399,7 +399,7 @@ module {
             let name_lower = Text.toLowercase(name);
             
             // Check if name is already taken by someone else
-            switch (Map.get(state.index_to_name, textUtils, name_lower)) {
+            switch (Map.get(state.name_to_index, textUtils, name_lower)) {
                 case (?existing_index) {
                     let target_index = dedup.getOrCreateIndex(neuron_id.id);
                     if (existing_index != target_index) {
@@ -413,7 +413,7 @@ module {
             let now = Nat64.fromIntWrap(Time.now());
             
             // Create or update name record
-            let name_record = switch (Map.get(state.name_to_index, nat32Utils, neuron_index)) {
+            let name_record = switch (Map.get(state.index_to_name, nat32Utils, neuron_index)) {
                 case (?existing) {
                     // If the name is changing, unverify it
                     let should_unverify = existing.name != name;
@@ -439,22 +439,22 @@ module {
             };
 
             // Remove old name from inverse map if it exists
-            switch (Map.get(state.name_to_index, nat32Utils, neuron_index)) {
+            switch (Map.get(state.index_to_name, nat32Utils, neuron_index)) {
                 case (?old_record) {
-                    Map.delete(state.index_to_name, textUtils, Text.toLowercase(old_record.name));
+                    Map.delete(state.name_to_index, textUtils, Text.toLowercase(old_record.name));
                 };
                 case null {};
             };
 
             // Set new mappings
-            Map.set(state.name_to_index, nat32Utils, neuron_index, name_record);
-            Map.set(state.index_to_name, textUtils, name_lower, neuron_index);
+            Map.set(state.index_to_name, nat32Utils, neuron_index, name_record);
+            Map.set(state.name_to_index, textUtils, name_lower, neuron_index);
             #Ok(());
         };
 
         public func get_sns_neuron_name(neuron_id : { id : Blob }) : ?T.Name {
             let neuron_index = dedup.getOrCreateIndex(neuron_id.id);
-            Map.get(state.name_to_index, nat32Utils, neuron_index);
+            Map.get(state.index_to_name, nat32Utils, neuron_index);
         };
 
         public func remove_sns_neuron_name(
@@ -488,14 +488,14 @@ module {
             let neuron_index = dedup.getOrCreateIndex(neuron_id.id);
             
             // Remove old name from inverse map if it exists
-            switch (Map.get(state.name_to_index, nat32Utils, neuron_index)) {
+            switch (Map.get(state.index_to_name, nat32Utils, neuron_index)) {
                 case (?old_record) {
-                    Map.delete(state.index_to_name, textUtils, Text.toLowercase(old_record.name));
+                    Map.delete(state.name_to_index, textUtils, Text.toLowercase(old_record.name));
                 };
                 case null {};
             };
 
-            Map.delete(state.name_to_index, nat32Utils, neuron_index);
+            Map.delete(state.index_to_name, nat32Utils, neuron_index);
             #Ok(());
         };
 
@@ -538,7 +538,7 @@ module {
             let name_lower = Text.toLowercase(name);
             
             // Check if name is already taken by someone else
-            switch (Map.get(state.index_to_name, textUtils, name_lower)) {
+            switch (Map.get(state.name_to_index, textUtils, name_lower)) {
                 case (?existing_index) {
                     let target_index = dedup.getOrCreateIndexForPrincipal(target);
                     if (existing_index != target_index) {
@@ -553,7 +553,7 @@ module {
             let now = Nat64.fromIntWrap(Time.now());
             
             // Create or update name record
-            let name_record = switch (Map.get(state.name_to_index, nat32Utils, target_index)) {
+            let name_record = switch (Map.get(state.index_to_name, nat32Utils, target_index)) {
                 case (?existing) {
                     // If the name is changing, unverify it
                     let should_unverify = existing.name != name;
@@ -579,16 +579,16 @@ module {
             };
 
             // Remove old name from inverse map if it exists
-            switch (Map.get(state.name_to_index, nat32Utils, target_index)) {
+            switch (Map.get(state.index_to_name, nat32Utils, target_index)) {
                 case (?old_record) {
-                    Map.delete(state.index_to_name, textUtils, Text.toLowercase(old_record.name));
+                    Map.delete(state.name_to_index, textUtils, Text.toLowercase(old_record.name));
                 };
                 case null {};
             };
 
             // Set new mappings
-            Map.set(state.name_to_index, nat32Utils, target_index, name_record);
-            Map.set(state.index_to_name, textUtils, name_lower, target_index);
+            Map.set(state.index_to_name, nat32Utils, target_index, name_record);
+            Map.set(state.name_to_index, textUtils, name_lower, target_index);
             #Ok(());
         };
 
@@ -623,14 +623,14 @@ module {
             let target_index = dedup.getOrCreateIndexForPrincipal(target);
             
             // Remove old name from inverse map if it exists
-            switch (Map.get(state.name_to_index, nat32Utils, target_index)) {
+            switch (Map.get(state.index_to_name, nat32Utils, target_index)) {
                 case (?old_record) {
-                    Map.delete(state.index_to_name, textUtils, Text.toLowercase(old_record.name));
+                    Map.delete(state.name_to_index, textUtils, Text.toLowercase(old_record.name));
                 };
                 case null {};
             };
 
-            Map.delete(state.name_to_index, nat32Utils, target_index);
+            Map.delete(state.index_to_name, nat32Utils, target_index);
             #Ok(());
         };
 
@@ -657,9 +657,9 @@ module {
             let name_lower = Text.toLowercase(target_name);
             
             // Find the name record
-            switch (Map.get(state.index_to_name, textUtils, name_lower)) {
+            switch (Map.get(state.name_to_index, textUtils, name_lower)) {
                 case (?index) {
-                    switch (Map.get(state.name_to_index, nat32Utils, index)) {
+                    switch (Map.get(state.index_to_name, nat32Utils, index)) {
                         case (?existing_record) {
                             let now = Nat64.fromIntWrap(Time.now());
                             let updated_record = {
@@ -670,7 +670,7 @@ module {
                                 created_by = existing_record.created_by;
                                 updated_by = caller;
                             };
-                            Map.set(state.name_to_index, nat32Utils, index, updated_record);
+                            Map.set(state.index_to_name, nat32Utils, index, updated_record);
                             #Ok(());
                         };
                         case null {
@@ -706,9 +706,9 @@ module {
             let name_lower = Text.toLowercase(target_name);
             
             // Find the name record
-            switch (Map.get(state.index_to_name, textUtils, name_lower)) {
+            switch (Map.get(state.name_to_index, textUtils, name_lower)) {
                 case (?index) {
-                    switch (Map.get(state.name_to_index, nat32Utils, index)) {
+                    switch (Map.get(state.index_to_name, nat32Utils, index)) {
                         case (?existing_record) {
                             let now = Nat64.fromIntWrap(Time.now());
                             let updated_record = {
@@ -719,7 +719,7 @@ module {
                                 created_by = existing_record.created_by;
                                 updated_by = caller;
                             };
-                            Map.set(state.name_to_index, nat32Utils, index, updated_record);
+                            Map.set(state.index_to_name, nat32Utils, index, updated_record);
                             #Ok(());
                         };
                         case null {
@@ -772,7 +772,7 @@ module {
             let neuron_index = dedup.getOrCreateIndex(neuron_id.id);
             
             // Find the neuron name record
-            switch (Map.get(state.name_to_index, nat32Utils, neuron_index)) {
+            switch (Map.get(state.index_to_name, nat32Utils, neuron_index)) {
                 case (?existing_record) {
                     let now = Nat64.fromIntWrap(Time.now());
                     let updated_record = {
@@ -783,7 +783,7 @@ module {
                         created_by = existing_record.created_by;
                         updated_by = caller;
                     };
-                    Map.set(state.name_to_index, nat32Utils, neuron_index, updated_record);
+                    Map.set(state.index_to_name, nat32Utils, neuron_index, updated_record);
                     #Ok(());
                 };
                 case null {
@@ -830,7 +830,7 @@ module {
             let neuron_index = dedup.getOrCreateIndex(neuron_id.id);
             
             // Find the neuron name record
-            switch (Map.get(state.name_to_index, nat32Utils, neuron_index)) {
+            switch (Map.get(state.index_to_name, nat32Utils, neuron_index)) {
                 case (?existing_record) {
                     let now = Nat64.fromIntWrap(Time.now());
                     let updated_record = {
@@ -841,7 +841,7 @@ module {
                         created_by = existing_record.created_by;
                         updated_by = caller;
                     };
-                    Map.set(state.name_to_index, nat32Utils, neuron_index, updated_record);
+                    Map.set(state.index_to_name, nat32Utils, neuron_index, updated_record);
                     #Ok(());
                 };
                 case null {
@@ -906,7 +906,7 @@ module {
             let name_lower = Text.toLowercase(name);
             
             // Check if name is already taken by someone else
-            switch (Map.get(state.index_to_name, textUtils, name_lower)) {
+            switch (Map.get(state.name_to_index, textUtils, name_lower)) {
                 case (?existing_index) {
                     let target_index = get_account_index(account);
                     if (existing_index != target_index) {
@@ -920,7 +920,7 @@ module {
             let now = Nat64.fromIntWrap(Time.now());
             
             // Create or update name record
-            let name_record = switch (Map.get(state.name_to_index, nat32Utils, account_index)) {
+            let name_record = switch (Map.get(state.index_to_name, nat32Utils, account_index)) {
                 case (?existing) {
                     // If the name is changing, unverify it
                     let should_unverify = existing.name != name;
@@ -946,16 +946,16 @@ module {
             };
 
             // Remove old name from inverse map if it exists
-            switch (Map.get(state.name_to_index, nat32Utils, account_index)) {
+            switch (Map.get(state.index_to_name, nat32Utils, account_index)) {
                 case (?old_record) {
-                    Map.delete(state.index_to_name, textUtils, Text.toLowercase(old_record.name));
+                    Map.delete(state.name_to_index, textUtils, Text.toLowercase(old_record.name));
                 };
                 case null {};
             };
 
             // Set new mappings
-            Map.set(state.name_to_index, nat32Utils, account_index, name_record);
-            Map.set(state.index_to_name, textUtils, name_lower, account_index);
+            Map.set(state.index_to_name, nat32Utils, account_index, name_record);
+            Map.set(state.name_to_index, textUtils, name_lower, account_index);
             #Ok(());
         };
 
@@ -966,7 +966,7 @@ module {
             };
 
             let account_index = get_account_index(account);
-            Map.get(state.name_to_index, nat32Utils, account_index);
+            Map.get(state.index_to_name, nat32Utils, account_index);
         };
 
         public func remove_account_name(
@@ -1018,20 +1018,20 @@ module {
             let account_index = get_account_index(account);
             
             // Remove old name from inverse map if it exists
-            switch (Map.get(state.name_to_index, nat32Utils, account_index)) {
+            switch (Map.get(state.index_to_name, nat32Utils, account_index)) {
                 case (?old_record) {
-                    Map.delete(state.index_to_name, textUtils, Text.toLowercase(old_record.name));
+                    Map.delete(state.name_to_index, textUtils, Text.toLowercase(old_record.name));
                 };
                 case null {};
             };
 
-            Map.delete(state.name_to_index, nat32Utils, account_index);
+            Map.delete(state.index_to_name, nat32Utils, account_index);
             #Ok(());
         };
 
         // Helper functions for account name lookups
         public func get_name_account(name : Text) : ?T.Account {
-            switch (Map.get(state.index_to_name, textUtils, Text.toLowercase(name))) {
+            switch (Map.get(state.name_to_index, textUtils, Text.toLowercase(name))) {
                 case (?index) {
                     // Try to reconstruct the account from the index
                     // First check if it's a simple principal index
@@ -1054,7 +1054,7 @@ module {
         };
 
         public func is_account_name_taken(name : Text) : Bool {
-            switch (Map.get(state.index_to_name, textUtils, Text.toLowercase(name))) {
+            switch (Map.get(state.name_to_index, textUtils, Text.toLowercase(name))) {
                 case (?_) { true };
                 case null { false };
             };
