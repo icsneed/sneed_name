@@ -81,7 +81,7 @@ module Permissions {
         var admins : Map.Map<Nat32, PermissionMetadata>;  // Admin index -> Metadata
         var principal_permissions : Map.Map<Nat32, Map.Map<Nat32, PermissionMetadata>>;  // Principal index -> Permission index -> Metadata
         var ban_state : BanState;  // Ban system state
-        var dedup_state : ?Dedup.DedupState;  // Dedup state for stable storage
+        var dedup_blobs : Vector.Vector<Blob>;  // Blobs for dedup reconstruction (no indexToBlob map in stable memory)
     };
 
     // Non-stable state includes permission types that are registered on start
@@ -144,37 +144,17 @@ module Permissions {
                     duration_settings = default_settings;
                 };
             };
-            var dedup_state = ?Dedup.empty();
+            var dedup_blobs = Vector.new<Blob>();
         };
     };
 
-    public func from_dedup(dedup : Dedup.Dedup) : PermissionState {
-        let default_settings = Vector.new<BanDurationSetting>();
-        for (setting in DEFAULT_DURATIONS.vals()) {
-            Vector.add(default_settings, setting);
-        };
-        {
-            admins = Map.new<Nat32, PermissionMetadata>();
-            principal_permissions = Map.new<Nat32, Map.Map<Nat32, PermissionMetadata>>();
-            var permission_types = Map.new<Nat32, PermissionType>();
-            dedup = dedup;
-            ban_state = {
-                var ban_log = Vector.new<BanLogEntry>();
-                var banned_users = Map.new<Nat32, Int>();
-                var settings = {
-                    min_ban_duration_hours = DEFAULT_MIN_BAN_DURATION;
-                    duration_settings = default_settings;
-                };
-            };
-        };
-    };
 
     public func from_stable(stable_state : StablePermissionState) : PermissionState {
         {
             admins = stable_state.admins;
             principal_permissions = stable_state.principal_permissions;
             var permission_types = Map.new<Nat32, PermissionType>();
-            dedup = Dedup.Dedup(stable_state.dedup_state);
+            dedup = Dedup.Dedup(?Dedup.fromBlobs(stable_state.dedup_blobs));
             ban_state = stable_state.ban_state;
         };
     };
