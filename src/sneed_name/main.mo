@@ -24,13 +24,8 @@ actor {
   // Create permissions manager directly from stable state
   var permissions : Permissions.PermissionsManager = Permissions.PermissionsManager(stable_permission_state);
 
-  // Create SNS permissions wrapper
-  var sns_state : SnsPermissions.SnsState = SnsPermissions.from_stable(
-    stable_sns_state,
-    permissions
-  );
-  var sns_permissions : SnsPermissions.SnsPermissions = SnsPermissions.SnsPermissions(sns_state);
-
+  // Create SNS permissions wrapper using stable state directly
+  var sns_permissions : SnsPermissions.SnsPermissions = SnsPermissions.SnsPermissions(stable_sns_state, permissions);
 
   // Create name index using permissions' dedup
   var name_index : NameIndex.NameIndex = NameIndex.NameIndex(

@@ -402,11 +402,7 @@ do {
         };
 
         // Set up SNS permissions
-        let sns_state = SnsPermissions.from_stable(
-            SnsPermissions.empty_stable(),
-            permissions
-        );
-        let sns_permissions = SnsPermissions.SnsPermissions(sns_state);
+        let sns_permissions = SnsPermissions.SnsPermissions(SnsPermissions.empty_stable(), permissions);
 
         // Create mock SNS governance canister
         let mock_governance = await MockSnsGovernance();
@@ -720,11 +716,7 @@ do {
         };
 
         // Set up name index with permissions
-        let sns_state = SnsPermissions.from_stable(
-            SnsPermissions.empty_stable(),
-            permissions
-        );
-        let sns_permissions = SnsPermissions.SnsPermissions(sns_state);
+        let sns_permissions = SnsPermissions.SnsPermissions(SnsPermissions.empty_stable(), permissions);
         let name_state = Lib.empty_stable();
         let name_index = Lib.NameIndex(name_state, ?sns_permissions);
 
@@ -982,11 +974,7 @@ do {
         };
 
         // Set up SNS permissions using the same permissions instance (which contains dedup and bans)
-        let sns_state = SnsPermissions.from_stable(
-            SnsPermissions.empty_stable(),
-            permissions  // This ensures SNS permissions uses the same dedup and ban system
-        );
-        let sns_permissions = SnsPermissions.SnsPermissions(sns_state);
+        let sns_permissions = SnsPermissions.SnsPermissions(SnsPermissions.empty_stable(), permissions);
 
         // Set up name index using the SNS permissions (which will use the shared dedup and ban system)
         let name_state = Lib.empty_stable();
@@ -1210,11 +1198,7 @@ do {
         };
 
         // Set up name index with permissions
-        let sns_state = SnsPermissions.from_stable(
-            SnsPermissions.empty_stable(),
-            permissions
-        );
-        let sns_permissions = SnsPermissions.SnsPermissions(sns_state);
+        let sns_permissions = SnsPermissions.SnsPermissions(SnsPermissions.empty_stable(), permissions);
         let name_state = Lib.empty_stable();
         let name_index = Lib.NameIndex(name_state, ?sns_permissions);
 
@@ -1532,8 +1516,7 @@ do {
             case (#Ok()) {};
         };
 
-        let sns_state = SnsPermissions.from_stable(SnsPermissions.empty_stable(), permissions);
-        let sns_permissions = SnsPermissions.SnsPermissions(sns_state);
+        let sns_permissions = SnsPermissions.SnsPermissions(SnsPermissions.empty_stable(), permissions);
         let name_state = Lib.empty_stable();
         let name_index = Lib.NameIndex(name_state, ?sns_permissions);
 
@@ -1696,8 +1679,7 @@ do {
             case (#Ok()) {};
         };
 
-        let sns_state = SnsPermissions.from_stable(SnsPermissions.empty_stable(), permissions);
-        let sns_permissions = SnsPermissions.SnsPermissions(sns_state);
+        let sns_permissions = SnsPermissions.SnsPermissions(SnsPermissions.empty_stable(), permissions);
         let name_state = Lib.empty_stable();
         let name_index = Lib.NameIndex(name_state, ?sns_permissions);
 

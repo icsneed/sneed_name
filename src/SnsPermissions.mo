@@ -106,7 +106,14 @@ module {
         dedup.getOrCreateIndex(blob);
     };
 
-    public class SnsPermissions(state : SnsState) {
+    public class SnsPermissions(stable_state : StableSnsState, permissions : Permissions.PermissionsManager) {
+        // Create the runtime state from stable state and permissions
+        private let state : SnsState = {
+            permission_settings = stable_state.permission_settings;
+            permissions = permissions;
+            dedup = permissions.get_dedup();
+        };
+
         // Get the permissions manager
         public func get_permissions() : Permissions.PermissionsManager {
             state.permissions
