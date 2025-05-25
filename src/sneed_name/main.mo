@@ -315,4 +315,13 @@ actor {
   public shared ({ caller }) func get_banned_words() : async T.NameResult<[Text]> {
     await* name_index.get_banned_words(caller);
   };
+
+  // Name Settings Management
+  public query func get_name_settings() : async T.NameSettings {
+    name_index.get_name_settings();
+  };
+
+  public shared ({ caller }) func set_name_settings(settings : T.NameSettings) : async T.NameResult<()> {
+    await* name_index.set_name_settings(caller, settings);
+  };
 };

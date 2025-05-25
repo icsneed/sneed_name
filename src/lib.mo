@@ -15,6 +15,7 @@ import SnsPermissions "./SnsPermissions";
 import Array "mo:base/Array";
 import Blob "mo:base/Blob";
 import Iter "mo:base/Iter";
+import Char "mo:base/Char";
 
 module {
     // Re-export permission constants from NamePermissions for convenience
@@ -29,12 +30,19 @@ module {
     public let ADD_BANNED_WORD_PERMISSION = NamePermissions.ADD_BANNED_WORD_PERMISSION;
     public let REMOVE_BANNED_WORD_PERMISSION = NamePermissions.REMOVE_BANNED_WORD_PERMISSION;
     public let VIEW_BANNED_WORDS_PERMISSION = NamePermissions.VIEW_BANNED_WORDS_PERMISSION;
+    public let MANAGE_NAME_SETTINGS_PERMISSION = NamePermissions.MANAGE_NAME_SETTINGS_PERMISSION;
 
     public func empty_stable() : T.NameIndexState {
         {
             name_to_index = Map.new<Nat32, T.Name>();
             index_to_name = Map.new<Text, Nat32>();
             blacklisted_words = Map.new<Text, T.Name>();
+            var name_settings = {
+                min_length = 1;
+                max_length = 64;
+                allow_special_chars = true;
+                allow_unicode = false;
+            };
         };
     };
 
@@ -159,6 +167,12 @@ module {
                     case null {};
                 };
                 return #Err(#NotAuthorized({ required_permission = ?NamePermissions.EDIT_ANY_NAME }));
+            };
+            
+            // Validate name format and length
+            switch (validate_name(name)) {
+                case (#Err(e)) { return #Err(e) };
+                case (#Ok()) {};
             };
             
             // Check for banned words and auto-ban if needed
@@ -1190,6 +1204,122 @@ module {
                 };
             };
 
+            #Ok(());
+        };
+
+        // Name validation functions
+        private func validate_name_length(name : Text) : T.NameResult<()> {
+            let name_length = Text.size(name);
+            if (name_length < state.name_settings.min_length) {
+                return #Err(#InvalidName({ 
+                    name = name; 
+                    reason = "Name too short. Minimum length: " # debug_show(state.name_settings.min_length) 
+                }));
+            };
+            if (name_length > state.name_settings.max_length) {
+                return #Err(#InvalidName({ 
+                    name = name; 
+                    reason = "Name too long. Maximum length: " # debug_show(state.name_settings.max_length) 
+                }));
+            };
+            #Ok(());
+        };
+
+        private func validate_name_characters(name : Text) : T.NameResult<()> {
+            // Check for special characters if not allowed
+            if (not state.name_settings.allow_special_chars) {
+                for (char in name.chars()) {
+                    let char_code = Char.toNat32(char);
+                    // Allow alphanumeric characters (A-Z, a-z, 0-9)
+                    let is_alpha = (char_code >= 65 and char_code <= 90) or (char_code >= 97 and char_code <= 122);
+                    let is_numeric = char_code >= 48 and char_code <= 57;
+                    if (not (is_alpha or is_numeric)) {
+                        return #Err(#InvalidName({ 
+                            name = name; 
+                            reason = "Special characters not allowed" 
+                        }));
+                    };
+                };
+            };
+
+            // Check for unicode characters if not allowed
+            if (not state.name_settings.allow_unicode) {
+                for (char in name.chars()) {
+                    let char_code = Char.toNat32(char);
+                    // Only allow ASCII characters (0-127)
+                    if (char_code > 127) {
+                        return #Err(#InvalidName({ 
+                            name = name; 
+                            reason = "Unicode characters not allowed" 
+                        }));
+                    };
+                };
+            };
+
+            #Ok(());
+        };
+
+        private func validate_name(name : Text) : T.NameResult<()> {
+            // Check length
+            switch (validate_name_length(name)) {
+                case (#Err(e)) { return #Err(e) };
+                case (#Ok()) {};
+            };
+
+            // Check characters
+            switch (validate_name_characters(name)) {
+                case (#Err(e)) { return #Err(e) };
+                case (#Ok()) {};
+            };
+
+            #Ok(());
+        };
+
+        // Name settings management
+        public func get_name_settings() : T.NameSettings {
+            state.name_settings
+        };
+
+        public func set_name_settings(caller : Principal, settings : T.NameSettings) : async* T.NameResult<()> {
+            if (Principal.isAnonymous(caller)) {
+                return #Err(#AnonymousCaller);
+            };
+
+            // Check permissions
+            switch (permissions) {
+                case (?p) {
+                    switch (p.check_permission_detailed(caller, NamePermissions.MANAGE_NAME_SETTINGS_PERMISSION)) {
+                        case (#Banned(reason)) {
+                            return #Err(#Banned({ reason = reason.reason; expires_at = reason.expires_at }));
+                        };
+                        case (#PermissionNotGranted or #PermissionExpired(_) or #PermissionTypeNotFound(_) or #NoPrincipalPermissions) {
+                            return #Err(#NotAuthorized({ required_permission = ?NamePermissions.MANAGE_NAME_SETTINGS_PERMISSION }));
+                        };
+                        case (#Allowed) {};
+                        case (#PermissionTypeExists(_)) {
+                            // This shouldn't happen in permission checking, but handle it gracefully
+                            return #Err(#NotAuthorized({ required_permission = ?NamePermissions.MANAGE_NAME_SETTINGS_PERMISSION }));
+                        };
+                    };
+                };
+                case null {
+                    return #Err(#NotAuthorized({ required_permission = ?NamePermissions.MANAGE_NAME_SETTINGS_PERMISSION }));
+                };
+            };
+
+            // Validate settings
+            if (settings.min_length == 0) {
+                return #Err(#InvalidNameSettings({ reason = "Minimum length must be at least 1" }));
+            };
+            if (settings.min_length > settings.max_length) {
+                return #Err(#InvalidNameSettings({ reason = "Minimum length cannot be greater than maximum length" }));
+            };
+            if (settings.max_length > 1000) {
+                return #Err(#InvalidNameSettings({ reason = "Maximum length cannot exceed 1000 characters" }));
+            };
+
+            // Update settings
+            state.name_settings := settings;
             #Ok(());
         };
     };

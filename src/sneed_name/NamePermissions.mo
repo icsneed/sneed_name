@@ -26,6 +26,9 @@ module NamePermissions {
     public let REMOVE_BANNED_WORD_PERMISSION = "remove_banned_word";
     public let VIEW_BANNED_WORDS_PERMISSION = "view_banned_words";
 
+    // Name settings management permission constant
+    public let MANAGE_NAME_SETTINGS_PERMISSION = "manage_name_settings";
+
     public func add_name_permissions(
         permissions : Permissions.PermissionsManager
     ) : T.PermissionResult<()> {
@@ -193,6 +196,18 @@ module NamePermissions {
             ?(30 * 24 * 60 * 60 * 1_000_000_000)    // 30 days default
         );
         switch(view_banned_words_result) {
+            case (#Err(e)) { return #Err(e) };
+            case (#Ok()) {};
+        };
+
+        // Add permission type for managing name settings
+        let manage_settings_result = permissions.add_permission_type(
+            MANAGE_NAME_SETTINGS_PERMISSION,
+            "Permission to manage name length and validation settings",
+            ?(365 * 24 * 60 * 60 * 1_000_000_000),  // 1 year max
+            ?(30 * 24 * 60 * 60 * 1_000_000_000)    // 30 days default
+        );
+        switch(manage_settings_result) {
             case (#Err(e)) { return #Err(e) };
             case (#Ok()) {};
         };

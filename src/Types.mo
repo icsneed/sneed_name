@@ -20,10 +20,19 @@ module {
         subaccount : ?Blob;
     };
 
+    // Name validation settings
+    public type NameSettings = {
+        min_length : Nat;
+        max_length : Nat;
+        allow_special_chars : Bool;
+        allow_unicode : Bool;
+    };
+
     public type NameIndexState = {
         name_to_index : Map.Map<Nat32, Name>;
         index_to_name : Map.Map<Text, Nat32>;
         blacklisted_words : Map.Map<Text, Name>;
+        var name_settings : NameSettings;
         // todo blacklisted words, admins, banned users
     };
 
@@ -41,6 +50,7 @@ module {
         #NeuronNotFound : { neuron_id : Blob };
         #PrincipalNotFound : { principal : Principal };
         #BannedWord : { word : Text };
+        #InvalidNameSettings : { reason : Text };
     };
 
     public type AdminError = {
