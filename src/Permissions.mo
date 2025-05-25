@@ -441,8 +441,17 @@ module Permissions {
         };
     };
 
-    public class PermissionsManager(state : PermissionState) {
+    public class PermissionsManager(stable_state : StablePermissionState) {
         let nat32Utils = (func (n : Nat32) : Nat32 { n }, Nat32.equal);
+        
+        // Construct the heap state from stable state
+        private let state : PermissionState = {
+            admins = stable_state.admins;
+            principal_permissions = stable_state.principal_permissions;
+            var permission_types = Map.new<Nat32, PermissionType>();
+            dedup = Dedup.Dedup(?Dedup.fromBlobs(stable_state.dedup_blobs));
+            ban_state = stable_state.ban_state;
+        };
 
         // Expose dedup instance for other services to use
         public func get_dedup() : Dedup.Dedup {

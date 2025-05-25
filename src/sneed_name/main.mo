@@ -21,11 +21,8 @@ actor {
   stable var stable_sns_state : SnsPermissions.StableSnsState = SnsPermissions.empty_stable();
   stable var stable_name_index_state : T.NameIndexState = NameIndex.empty_stable();
 
-  // Create permissions first since we need its dedup
-  var permission_state : Permissions.PermissionState = Permissions.from_stable(
-    stable_permission_state
-  );
-  var permissions : Permissions.PermissionsManager = Permissions.PermissionsManager(permission_state);
+  // Create permissions manager directly from stable state
+  var permissions : Permissions.PermissionsManager = Permissions.PermissionsManager(stable_permission_state);
 
   // Create SNS permissions wrapper
   var sns_state : SnsPermissions.SnsState = SnsPermissions.from_stable(
